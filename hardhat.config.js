@@ -9,8 +9,7 @@ const { HOODI_RPC_URL, DEPLOYER_PRIVATE_KEY } = process.env;
 module.exports = {
   solidity: {
     compilers: [
-      // ChatApp.sol (legacy, replaced during the rework) keeps its compiler.
-      { version: "0.8.19" },
+      // One compiler for every contract; the legacy ChatApp.sol (pragma >=0.7 <0.9) uses it too.
       {
         version: "0.8.28",
         settings: { evmVersion: "cancun", optimizer: { enabled: true, runs: 200 } },

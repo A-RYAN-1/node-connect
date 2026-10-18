@@ -38,7 +38,7 @@
   </a>
 </p>
 
-<p align="center"><sub>Last updated: 2026-10-16 &middot; Live on Vercel (free), contract on the Hoodi testnet &middot; a full rework is planned (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
+<p align="center"><sub>Last updated: 2026-10-18 &middot; Live on Vercel (free), contract on the Hoodi testnet &middot; a full rework is planned (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
 
 ---
 
@@ -170,6 +170,26 @@ The page holds no state of its own beyond what it read last: after each mined tr
 Tokens are a balance kept inside the contract (`minerReward`), not an ERC-20 token, so they do not
 show up in a wallet.
 
+### The rework contracts (iteration 1, deployed on Hoodi 2026-10-18)
+
+Four new contracts replace `ChatApp.sol` step by step; the site still uses `ChatApp` until the
+frontend moves in a later iteration. All source is verified on Blockscout.
+
+| Contract | Address | What it does |
+|---|---|---|
+| `NodeToken` (TOK) | [`0xC6a2...09b0`](https://eth-hoodi.blockscout.com/address/0xC6a2fbCB19E29371a35Bf721559902843F6e09b0) | ERC-20, hard cap of 21M, minted only by `Mining`, no admin |
+| `Registry` | [`0x6c03...1802`](https://eth-hoodi.blockscout.com/address/0x6c03e1B8273F0Dd3A6d4d7E28B21d15Ad9e71802) | profiles with an encryption key; friend request, accept, decline, remove, block |
+| `ChatAnchor` | [`0x7604...f4cF`](https://eth-hoodi.blockscout.com/address/0x7604755AeA3D48b90F6b585bCD8333AF7Dbff4cF) | daily epochs; the relayer posts one Merkle root of activity per finished epoch |
+| `Mining` | [`0xcB3e...661f`](https://eth-hoodi.blockscout.com/address/0xcB3e522516E30436358D0622874BE358C0ea661f) | claim TOK with a Merkle proof of activity plus a proof-of-work nonce |
+
+Mining rules: at least 5 messages to one accepted friend in the epoch; the nonce hash covers the
+caller, so nobody can reuse another's work; one claim per user per epoch and at most 100 per epoch;
+accounts must be a day old; 50 TOK per claim, halved every 90 epochs; the target retargets from the
+previous epoch's claims (aim: 10) within a factor of 16; only the epoch just ended is claimable;
+every failure reverts. Deployer and relayer are separate wallets (addresses in
+[`deployments/hoodi.json`](deployments/hoodi.json)); the relayer is trusted to post true roots
+until the batch is published for recomputation (iteration 2).
+
 ### Tech stack
 
 | Layer | Technology |
@@ -219,8 +239,8 @@ pages/                     / (chat), /alluser (add friends), /leaderboard
 
 | Area | What is in place |
 |---|---|
-| Tests | 9 Hardhat tests of the contract: accounts (reward, empty name, duplicates), friends (both sides, self, duplicate, unregistered), messages (shared chat order, non-friends rejected) and mining; all passing on 2026-10-16 |
-| CI | GitHub Actions on every push: ESLint, the contract tests, a check that `Context/ChatApp.json` matches the compiled contract, and the production build |
+| Tests | 49 Hardhat tests, all passing on 2026-10-18: the 9 of `ChatApp`, plus the rework contracts (claim, replay, binding to the sender, cap, retarget, halving, every revert; registry and anchor rules; token cap and minter) |
+| CI | GitHub Actions on every push: ESLint, the contract tests, Slither (0 findings, the timestamp detector excluded because epochs are time-based), a check that `Context/ChatApp.json` matches the compiled contract, and the production build |
 | Uptime | A daily workflow requests `/`, `/alluser` and `/leaderboard` on the live site and fails unless each answers 200 with the app |
 | Security | No secrets in the frontend (only public `NEXT_PUBLIC_` values); the deployer key lives only in a local `.env`; security headers from `vercel.json` (`nosniff`, `DENY` framing, referrer and permissions policies) |
 | Measured | Lighthouse on the live site, 2026-10-12 (mobile / desktop): performance 89-90 / 99, accessibility 100 / 100, best practices 100 / 100, SEO 100 / 100 |
@@ -231,6 +251,7 @@ Run them:
 ```bash
 npm run lint      # ESLint
 npm test          # contract tests
+npm run slither   # static analysis (pip install slither-analyzer solc-select)
 npm run build     # static export to out/
 ```
 
@@ -304,7 +325,7 @@ Never commit a real `.env` file; only `.env.example` is tracked.
 ## Deployment
 
 The site is a static export on Vercel's free Hobby plan; the contract lives on the Hoodi testnet at
-[`0x1C562FBbeA759113364Bf1EF282af19Bd8FD1A9f`](https://hoodi.etherscan.io/address/0x1C562FBbeA759113364Bf1EF282af19Bd8FD1A9f).
+[`0x8e4BBf86322Ab47D7cd2c6E313eEa72da328510C`](https://eth-hoodi.blockscout.com/address/0x8e4BBf86322Ab47D7cd2c6E313eEa72da328510C).
 
 | Part | Where it runs | How it deploys | Variables it needs |
 |---|---|---|---|
@@ -350,7 +371,7 @@ adding a friend and sending a message on Hoodi.
 
 **Planned: the rework** (agreed 2026-10-13; each step merged and deployed before the next)
 
-- [ ] Contracts and tests: an OpenZeppelin ERC-20 token (TOK) with a hard cap, a registry with
+- [x] Contracts and tests (done 2026-10-18, deployed and verified from a fresh wallet; the site switches in a later step): an OpenZeppelin ERC-20 token (TOK) with a hard cap, a registry with
       friend requests (request, accept, decline, remove, block), deployed and verified from a fresh
       wallet, which should also end the MetaMask warning
 - [ ] Backend on Vercel Functions and Neon: Sign-In with Ethereum, a messages API that stores only

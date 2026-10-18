@@ -2,17 +2,25 @@
 const path = require("path");
 const hre = require("hardhat");
 
-async function verify(address, constructorArguments) {
-  try {
-    await hre.run("verify:verify", { address, constructorArguments });
-    console.log(`verified ${address}`);
-  } catch (error) {
-    if (/already verified/i.test(error.message)) {
-      console.log(`already verified ${address}`);
-      return;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// The free Blockscout API answers 429 when calls come too fast: wait and retry.
+async function verify(address, constructorArguments, attempts = 5) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await hre.run("verify:verify", { address, constructorArguments });
+      console.log(`verified ${address}`);
+      break;
+    } catch (error) {
+      if (/already verified/i.test(error.message)) {
+        console.log(`already verified ${address}`);
+        break;
+      }
+      if (!/429|Too many|Failed to send/i.test(error.message) || attempt === attempts) throw error;
+      await sleep(20_000 * attempt);
     }
-    throw error;
   }
+  await sleep(10_000);
 }
 
 async function main() {
@@ -22,6 +30,7 @@ async function main() {
   await verify(d.chatAnchor, [d.deployer, d.relayer]);
   await verify(d.mining, [d.registry, d.chatAnchor]);
   await verify(d.token, [d.mining]);
+  if (d.legacyChatApp) await verify(d.legacyChatApp, []);
 }
 
 main().catch((error) => {
