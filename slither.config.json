@@ -1,0 +1,4 @@
+{
+  "filter_paths": "node_modules|contracts/ChatApp.sol",
+  "detectors_to_exclude": "timestamp"
+}
