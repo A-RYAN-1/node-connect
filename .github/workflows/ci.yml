@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Public values (see .env.example); the build fails without them
-      NEXT_PUBLIC_CONTRACT_ADDRESS: "0x1C562FBbeA759113364Bf1EF282af19Bd8FD1A9f"
+      NEXT_PUBLIC_CONTRACT_ADDRESS: "0x8e4BBf86322Ab47D7cd2c6E313eEa72da328510C"
       NEXT_PUBLIC_NETWORK: hoodi
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +24,13 @@ jobs:
       - run: npm run lint
       - name: Contract tests
         run: npm test
+      - name: Slither static analysis
+        run: |
+          pip install slither-analyzer solc-select
+          solc-select install 0.8.28
+          solc-select use 0.8.28
+          npx hardhat compile
+          slither . --hardhat-ignore-compile
       - name: ABI in Context/ matches the contract
         run: |
           node -e '

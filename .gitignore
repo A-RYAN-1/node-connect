@@ -16,3 +16,7 @@ cache/
 .DS_Store
 
 .vercel
+
+# Local-chain deployment records
+deployments/hardhat.json
+deployments/localhost.json

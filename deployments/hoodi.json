@@ -1,0 +1,12 @@
+{
+  "network": "hoodi",
+  "chainId": 560048,
+  "deployer": "0xdEA32df577B0A8aF289FE4C7872AEC464bd247A7",
+  "relayer": "0xF830EF92A088256F2979A62bc7cefFe1F4b2c88A",
+  "registry": "0x6c03e1B8273F0Dd3A6d4d7E28B21d15Ad9e71802",
+  "chatAnchor": "0x7604755AeA3D48b90F6b585bCD8333AF7Dbff4cF",
+  "mining": "0xcB3e522516E30436358D0622874BE358C0ea661f",
+  "token": "0xC6a2fbCB19E29371a35Bf721559902843F6e09b0",
+  "anchorGenesis": 1792313376,
+  "legacyChatApp": "0x8e4BBf86322Ab47D7cd2c6E313eEa72da328510C"
+}

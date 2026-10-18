@@ -7,7 +7,30 @@ const { HOODI_RPC_URL, DEPLOYER_PRIVATE_KEY } = process.env;
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
-  solidity: "0.8.19",
+  solidity: {
+    compilers: [
+      // One compiler for every contract; the legacy ChatApp.sol (pragma >=0.7 <0.9) uses it too.
+      {
+        version: "0.8.28",
+        settings: { evmVersion: "cancun", optimizer: { enabled: true, runs: 200 } },
+      },
+    ],
+  },
+  // Source verification on the Hoodi explorers (Blockscout needs no key).
+  etherscan: {
+    apiKey: { hoodi: "no-key-needed" },
+    customChains: [
+      {
+        network: "hoodi",
+        chainId: 560048,
+        urls: {
+          apiURL: "https://eth-hoodi.blockscout.com/api",
+          browserURL: "https://eth-hoodi.blockscout.com",
+        },
+      },
+    ],
+  },
+  sourcify: { enabled: false },
   networks: {
     hardhat: {
       chainId: 1337,
