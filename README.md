@@ -34,7 +34,7 @@
 
 <p align="center">
   <a href="https://node-connect-sigma.vercel.app">
-    <img src="docs/images/chat.png" width="90%" alt="Chat screen: friends list on the left, the chat with bob on the right, the account name and a 13 TOK balance in the header">
+    <img src="docs/images/chat.png" width="90%" alt="Chat screen: friends list on the left, the chat with bob on the right, the account name and an 11 TOK balance in the header">
   </a>
 </p>
 
@@ -84,19 +84,19 @@ Things to try in the first two minutes:
 
 1. **Connect Wallet** and approve the network switch: the app adds Hoodi to MetaMask if it is missing.
 2. **Create an account** with a username: the header balance shows 5 TOK once the transaction is mined.
-3. Open **Add Friends** and add someone: both of you get 1 TOK, and they appear in your friends list.
+3. Open **Find people** and add someone: both of you get 1 TOK, and they appear in your friends list.
 4. Open the chat with that friend and **send a message** (Enter sends): both balances go up by 1.
 5. Open the **Leaderboard** to see everyone ranked by tokens.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/find-friends.png" alt="Add Friends page: cards for dave and erin, each with an Add Friend button"><p align="center"><sub>Registered users you can add, read from the contract (<a href="#the-contract">how friendships work</a>)</sub></p></td>
-    <td width="50%"><img src="docs/images/leaderboard.png" alt="Leaderboard: alice 13, bob 12, carol 8, dave 7, erin 5 tokens"><p align="center"><sub>Everyone ranked by tokens (<a href="#the-contract">the reward rules</a>)</sub></p></td>
+    <td width="50%"><img src="docs/images/find-friends.png" alt="Find people page: dave and erin, each with an Add friend button"><p align="center"><sub>Registered users you can add, read from the contract (<a href="#the-contract">how friendships work</a>)</sub></p></td>
+    <td width="50%"><img src="docs/images/leaderboard.png" alt="Leaderboard: alice 11, bob 10, carol 6, dave 5, erin 5 tokens"><p align="center"><sub>Everyone ranked by tokens (<a href="#the-contract">the reward rules</a>)</sub></p></td>
   </tr>
 </table>
 
 <sub>Screenshots: the production build of this commit on a local Hardhat chain seeded with demo
-accounts (alice, bob, carol, dave, erin), 1440x900, 2026-10-16. The live site shows the same
+accounts (alice, bob, carol, dave, erin), 1440x900, 2026-10-21. The live site shows the same
 screens for Hoodi accounts.</sub>
 
 ## Features
