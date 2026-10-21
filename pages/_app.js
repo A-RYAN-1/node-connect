@@ -1,14 +1,16 @@
 import Head from "next/head";
+import { Inter } from "next/font/google";
 import "../styles/globals.css";
 
-//INTERNAL IMPORT
 import { ChatAppProvider } from "../Context/ChatAppContext";
 import { NavBar } from "../Components/index";
 
+const inter = Inter({ subsets: ["latin"] });
+
 const MyApp = ({ Component, pageProps }) => (
-  <div>
+  <div className={inter.className}>
     <Head>
-      <title>Node Connect - Decentralised Chat</title>
+      <title>Node Connect</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
     </Head>
     <ChatAppProvider>

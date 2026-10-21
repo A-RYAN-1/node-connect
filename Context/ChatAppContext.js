@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 
 import {
@@ -12,24 +12,24 @@ import {
   errorMessage,
 } from "../Utils/apiFeature";
 
-export const ChatAppContect = React.createContext();
+export const ChatAppContext = React.createContext();
 
 const sameAddress = (a, b) => a.toLowerCase() === b.toLowerCase();
 
 export const ChatAppProvider = ({ children }) => {
   const [account, setAccount] = useState("");
   const [userName, setUserName] = useState("");
+  const [ready, setReady] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [busy, setBusy] = useState("");
   const [friendLists, setFriendLists] = useState([]);
   const [friendMsg, setFriendMsg] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [pendingMsg, setPendingMsg] = useState([]);
   const [userLists, setUserLists] = useState([]);
   const [userListsforleaderboard, setUserListsforleaderboard] = useState([]);
   const [tokenBalance, setTokenBalance] = useState(0);
   const [error, setError] = useState("");
-
-  // The friend whose chat is open
-  const [currentUserName, setCurrentUserName] = useState("");
-  const [currentUserAddress, setCurrentUserAddress] = useState("");
+  const connectingRef = useRef(false);
 
   const router = useRouter();
 
@@ -77,7 +77,8 @@ export const ChatAppProvider = ({ children }) => {
         setAccount(address);
         await loadAccount(address);
       })
-      .catch((err) => setError(errorMessage(err)));
+      .catch((err) => setError(errorMessage(err)))
+      .finally(() => setReady(true));
 
     if (!hasWallet()) return undefined;
     // Reload the data when the user switches account in MetaMask
@@ -87,7 +88,12 @@ export const ChatAppProvider = ({ children }) => {
       window.ethereum.removeListener?.("accountsChanged", onAccountsChanged);
   }, [loadAccount]);
 
+  // One MetaMask prompt at a time: a second request while the first is
+  // open is rejected by MetaMask (error -32002).
   const connectWallet = async () => {
+    if (connectingRef.current) return;
+    connectingRef.current = true;
+    setConnecting(true);
     try {
       const address = await requestWallet();
       if (!address) return;
@@ -95,21 +101,27 @@ export const ChatAppProvider = ({ children }) => {
       await loadAccount(address);
     } catch (err) {
       setError(errorMessage(err));
+    } finally {
+      connectingRef.current = false;
+      setConnecting(false);
     }
   };
 
-  // Sends a transaction, waits for it to be mined, then runs `after`
-  const runTransaction = async (send, after) => {
+  // Sends a transaction and waits for it to be mined. Returns true when it
+  // went through, so the caller can keep its input when it did not.
+  const runTransaction = async (label, send, after) => {
+    setBusy(label);
     try {
       const contract = await connectingWithContract();
       const tx = await send(contract);
-      setLoading(true);
       await tx.wait();
-      setLoading(false);
       await after();
+      return true;
     } catch (err) {
-      setLoading(false);
       setError(errorMessage(err));
+      return false;
+    } finally {
+      setBusy("");
     }
   };
 
@@ -124,70 +136,75 @@ export const ChatAppProvider = ({ children }) => {
   }, []);
 
   const createAccount = async ({ name }) => {
-    if (!name?.trim() || !account)
-      return setError("Name and account address cannot be empty");
-    await runTransaction(
+    if (!name?.trim() || !account) {
+      setError("Choose a name first.");
+      return false;
+    }
+    return runTransaction(
+      "account",
       (contract) => contract.createAccount(name.trim()),
       () => loadAccount(account)
     );
   };
 
   const addFriends = async ({ name, userAddress }) => {
-    if (!name || !userAddress) return setError("Please provide a name and address");
-    await runTransaction(
+    if (!name || !userAddress) {
+      setError("A name and an address are needed to add a friend.");
+      return false;
+    }
+    return runTransaction(
+      `friend:${userAddress}`,
       (contract) => contract.addFriend(userAddress, name),
       async () => {
         await loadAccount(account);
-        router.push("/");
+        router.push({ pathname: "/", query: { name, address: userAddress } });
       }
     );
   };
 
+  // The message shows at once as pending and is replaced by the stored one
+  // after the chain confirms it.
   const sendMessage = async ({ msg, address }) => {
-    if (!msg?.trim() || !address) return setError("Please type your message");
-    await runTransaction(
-      (contract) => contract.sendMessage(address, msg),
+    const text = msg?.trim();
+    if (!text || !address) return false;
+    const pending = { id: Date.now(), to: address, sender: account, msg: text };
+    setPendingMsg((list) => [...list, pending]);
+    const sent = await runTransaction(
+      "message",
+      (contract) => contract.sendMessage(address, text),
       async () => {
         await readMessage(address);
         await loadAccount(account);
       }
     );
+    setPendingMsg((list) => list.filter((m) => m.id !== pending.id));
+    return sent;
   };
 
-  const readUser = useCallback(async (userAddress) => {
-    try {
-      const contract = await connectingWithContract();
-      setCurrentUserName(await contract.getUsername(userAddress));
-      setCurrentUserAddress(userAddress);
-    } catch (err) {
-      setError(errorMessage(err));
-    }
-  }, []);
-
   return (
-    <ChatAppContect.Provider
+    <ChatAppContext.Provider
       value={{
         readMessage,
         createAccount,
         addFriends,
         sendMessage,
-        readUser,
         connectWallet,
         account,
         userName,
+        ready,
+        connecting,
+        busy,
         friendLists,
         friendMsg,
+        pendingMsg,
         userLists,
-        loading,
         error,
         clearError: () => setError(""),
-        currentUserName,
-        currentUserAddress,
         userListsforleaderboard,
         tokenBalance,
       }}
     >
       {children}
-    </ChatAppContect.Provider>
+    </ChatAppContext.Provider>
   );
 };
