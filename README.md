@@ -384,6 +384,8 @@ build in CI, checked configuration, security headers, a daily uptime check, the 
 above), and auto-deploy on push since 2026-10-16. Checked by hand on the live site on 2026-10-13:
 adding a friend and sending a message on Hoodi.
 
+**Live check, 2026-10-23 (PR #4 on production):** two throwaway wallets registered with their chat keys on the Registry, sent a friend request and accepted it; sending was refused with 403 before the request and after it, stored (201) after the acceptance; the friend opened the message, replied, and both sides decrypted the full history after a reload; a third signed-in address read an empty thread and was refused (403) when sending. The Neon `messages` table held two rows, both base64 with no plaintext, and they were deleted afterwards. The profiles `nc-live-A` and `nc-live-B` remain on chain and show in Find people. The screenshots above show the earlier interface and are refreshed in a later pass.
+
 **Known limitations**
 
 - The server sees who messages whom and when, and can drop a message; it cannot read one. Losing
@@ -394,7 +396,7 @@ adding a friend and sending a message on Hoodi.
 - Creating an account and answering a friend request still cost a MetaMask confirmation and gas.
 - Friend and user lists are rebuilt from contract events and one read per user on every load; fine
   for a demo-sized network, not for thousands of users.
-- No frontend or browser tests yet; the encrypted flow was checked by hand on the live site.
+- No frontend or browser tests yet. The encrypted flow was checked on the live site on 2026-10-23 through the real API with two throwaway wallets (see Status); the MetaMask screens themselves were not clicked through.
 
 **Planned: the rework** (agreed 2026-10-13; each step merged and deployed before the next)
 
@@ -405,7 +407,7 @@ adding a friend and sending a message on Hoodi.
       stores only ciphertext, OpenAPI at `/api/openapi.json` and Swagger UI at `/api/docs`; the chat UI
       is used by the chat UI since the encrypted-chat release. Still to do: the scheduled job that anchors each day's message hashes on chain
 - [x] End-to-end encrypted chats (keys derived from one wallet signature) and the chat UI wired to the API with
-      sending, failed and retry states (built 2026-10-23; the live check is recorded in the dossier)
+      sending, failed and retry states (merged and live 2026-10-23, PR #4)
 - [ ] Real token mining: proof of activity plus proof of work, one claim per user per day, bound to
       the sender, with retargeting and halving; mined in a Web Worker
 - [ ] Production checks again (Slither in CI, API tests, Lighthouse), then this README
