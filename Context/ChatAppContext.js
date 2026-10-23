@@ -6,66 +6,96 @@ import {
   connectWallet as requestWallet,
   connectingWithContract,
   hasWallet,
-  toUser,
-  toFriend,
-  toMessage,
+  queryAllLogs,
+  readRegistry,
+  readToken,
+  signWithWallet,
   errorMessage,
 } from "../Utils/apiFeature";
+import { getSession, signIn, sendCiphertext, listThread } from "../Utils/chatApi";
+import {
+  KEY_MESSAGE,
+  keyPairFromSignature,
+  encrypt,
+  decrypt,
+  toHex,
+} from "../lib/client/crypto";
 
 export const ChatAppContext = React.createContext();
 
 const sameAddress = (a, b) => a.toLowerCase() === b.toLowerCase();
+const UNREADABLE = "This message could not be decrypted.";
 
 export const ChatAppProvider = ({ children }) => {
   const [account, setAccount] = useState("");
   const [userName, setUserName] = useState("");
   const [ready, setReady] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
   const [busy, setBusy] = useState("");
-  const [friendLists, setFriendLists] = useState([]);
+  const [people, setPeople] = useState([]);
   const [friendMsg, setFriendMsg] = useState([]);
   const [pendingMsg, setPendingMsg] = useState([]);
-  const [userLists, setUserLists] = useState([]);
-  const [userListsforleaderboard, setUserListsforleaderboard] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
   const [tokenBalance, setTokenBalance] = useState(0);
   const [error, setError] = useState("");
   const connectingRef = useRef(false);
+  const keysRef = useRef(null);
+  const peopleRef = useRef([]);
+  const sessionRef = useRef(false);
 
   const router = useRouter();
 
   const loadAccount = useCallback(async (address) => {
-    const contract = await connectingWithContract();
-
-    const registered = await contract.checkUserExists(address);
-    const [allUsers, friends] = await Promise.all([
-      contract.getAllAppUser().then((list) => list.map(toUser)),
-      registered
-        ? contract.getMyFriendList().then((list) => list.map(toFriend))
-        : [],
+    const registry = readRegistry();
+    const [registered, updated] = await Promise.all([
+      queryAllLogs(registry, registry.filters.Registered()),
+      queryAllLogs(registry, registry.filters.ProfileUpdated()),
     ]);
-
-    setUserName(registered ? await contract.getUsername(address) : "");
-    setFriendLists(friends);
-
-    // Users you can add: everyone except you and your friends
-    const friendAddresses = new Set(friends.map((f) => f.pubkey.toLowerCase()));
-    setUserLists(
-      allUsers.filter(
-        (u) =>
-          !sameAddress(u.accountAddress, address) &&
-          !friendAddresses.has(u.accountAddress.toLowerCase())
-      )
+    // The newest event of a user holds the current name and key.
+    const events = [...registered, ...updated].sort(
+      (a, b) => a.blockNumber - b.blockNumber || a.index - b.index
     );
+    const profiles = new Map();
+    for (const e of events) {
+      profiles.set(e.args.user.toLowerCase(), {
+        address: e.args.user,
+        name: e.args.name,
+        key: e.args.encryptionKey,
+      });
+    }
 
-    const rewards = await Promise.all(
-      allUsers.map((u) => contract.minerReward(u.accountAddress))
+    const me = profiles.get(address.toLowerCase());
+    setUserName(me ? me.name : "");
+
+    const others = [...profiles.values()].filter((p) => !sameAddress(p.address, address));
+    const withRelation = await Promise.all(
+      others.map(async (p) => {
+        if (!me) return { ...p, relation: "none" };
+        const [friends, outgoing, incoming] = await Promise.all([
+          registry.areFriends(address, p.address),
+          registry.hasRequested(address, p.address),
+          registry.hasRequested(p.address, address),
+        ]);
+        let relation = "none";
+        if (friends) relation = "friend";
+        else if (incoming) relation = "incoming";
+        else if (outgoing) relation = "outgoing";
+        return { ...p, relation };
+      })
     );
-    const leaderboard = allUsers
-      .map((u, i) => ({ ...u, tokens: Number(rewards[i]) }))
+    peopleRef.current = withRelation;
+    setPeople(withRelation);
+
+    const token = readToken();
+    const everyone = [...profiles.values()];
+    const balances = await Promise.all(everyone.map((p) => token.balanceOf(p.address)));
+    const ranked = everyone
+      .map((p, i) => ({ ...p, tokens: Number(balances[i] / 10n ** 18n) }))
       .sort((a, b) => b.tokens - a.tokens);
-    setUserListsforleaderboard(leaderboard);
-
-    const mine = leaderboard.find((u) => sameAddress(u.accountAddress, address));
+    setLeaderboard(ranked);
+    const mine = ranked.find((p) => sameAddress(p.address, address));
     setTokenBalance(mine ? mine.tokens : 0);
   }, []);
 
@@ -75,6 +105,7 @@ export const ChatAppProvider = ({ children }) => {
       .then(async (address) => {
         if (!address) return;
         setAccount(address);
+        sessionRef.current = sameAddress((await getSession()) || "0x0", address);
         await loadAccount(address);
       })
       .catch((err) => setError(errorMessage(err)))
@@ -98,12 +129,55 @@ export const ChatAppProvider = ({ children }) => {
       const address = await requestWallet();
       if (!address) return;
       setAccount(address);
+      sessionRef.current = sameAddress((await getSession()) || "0x0", address);
       await loadAccount(address);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       connectingRef.current = false;
       setConnecting(false);
+    }
+  };
+
+  // The chat key comes from one signature of a fixed text, so the same wallet
+  // always rebuilds the same keys and nothing is stored.
+  const ensureKeys = async () => {
+    if (keysRef.current) return keysRef.current;
+    const signature = await signWithWallet(KEY_MESSAGE, account);
+    keysRef.current = keyPairFromSignature(signature);
+    return keysRef.current;
+  };
+
+  const ensureSession = async () => {
+    if (sessionRef.current) return;
+    await signIn(account, (message) => signWithWallet(message, account));
+    sessionRef.current = true;
+  };
+
+  // Signs in to the API and builds the chat key: two signatures at most, no
+  // gas. Returns true when messages can be sent and read.
+  const unlock = async () => {
+    if (unlocked) return true;
+    setUnlocking(true);
+    try {
+      const keys = await ensureKeys();
+      const registered = await readRegistry().profileOf(account);
+      if (registered.registeredAt !== 0n && registered.encryptionKey !== toHex(keys.publicKey)) {
+        keysRef.current = null;
+        setError(
+          "This wallet produced a different chat key than the one registered for this account, so its messages cannot be opened."
+        );
+        return false;
+      }
+      await ensureSession();
+      setUnlocked(true);
+      return true;
+    } catch (err) {
+      keysRef.current = null;
+      setError(errorMessage(err));
+      return false;
+    } finally {
+      setUnlocking(false);
     }
   };
 
@@ -125,82 +199,164 @@ export const ChatAppProvider = ({ children }) => {
     }
   };
 
-  const readMessage = useCallback(async (friendAddress) => {
-    try {
-      const contract = await connectingWithContract();
-      const messages = await contract.readMessage(friendAddress);
-      setFriendMsg(messages.map(toMessage));
-    } catch (err) {
-      setError(errorMessage(err));
-    }
-  }, []);
+  const lostSession = () => {
+    sessionRef.current = false;
+    setUnlocked(false);
+  };
+
+  const toBubble = (row) => {
+    const other = sameAddress(row.sender, account) ? row.recipient : row.sender;
+    const key = peopleRef.current.find((p) => sameAddress(p.address, other))?.key;
+    const text = key ? decrypt(row.ciphertext, keysRef.current.secretKey, key) : null;
+    return {
+      id: row.id,
+      sender: row.sender,
+      text: text ?? UNREADABLE,
+      readable: text !== null,
+      timestamp: Math.floor(new Date(row.createdAt).getTime() / 1000),
+    };
+  };
+
+  // Newest-first rows from the API become an oldest-first, decrypted thread.
+  const readMessage = useCallback(
+    async (address) => {
+      if (!keysRef.current || !sessionRef.current) return;
+      try {
+        const rows = await listThread(address);
+        setFriendMsg(rows.map(toBubble).reverse());
+      } catch (err) {
+        if (err.status === 401) lostSession();
+        setError(errorMessage(err));
+      }
+    },
+    // toBubble reads refs and the account only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [account]
+  );
+
+  const clearThread = useCallback(() => setFriendMsg([]), []);
 
   const createAccount = async ({ name }) => {
     if (!name?.trim() || !account) {
       setError("Choose a name first.");
       return false;
     }
+    setBusy("account");
+    let keys;
+    try {
+      keys = await ensureKeys();
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy("");
+      return false;
+    }
     return runTransaction(
       "account",
-      (contract) => contract.createAccount(name.trim()),
+      (contract) => contract.register(name.trim(), toHex(keys.publicKey)),
       () => loadAccount(account)
     );
   };
 
-  const addFriends = async ({ name, userAddress }) => {
-    if (!name || !userAddress) {
-      setError("A name and an address are needed to add a friend.");
-      return false;
-    }
-    return runTransaction(
-      `friend:${userAddress}`,
-      (contract) => contract.addFriend(userAddress, name),
+  const requestFriend = (address) =>
+    runTransaction(
+      `friend:${address}`,
+      (contract) => contract.request(address),
+      () => loadAccount(account)
+    );
+
+  const acceptFriend = (address, name) =>
+    runTransaction(
+      `friend:${address}`,
+      (contract) => contract.accept(address),
       async () => {
         await loadAccount(account);
-        router.push({ pathname: "/", query: { name, address: userAddress } });
+        router.push({ pathname: "/", query: { name, address } });
       }
     );
+
+  const declineFriend = (address) =>
+    runTransaction(
+      `friend:${address}`,
+      (contract) => contract.decline(address),
+      () => loadAccount(account)
+    );
+
+  // The message shows at once as sending. If the API refuses it, it stays in
+  // the thread as failed with a retry; nothing is lost.
+  const deliver = async (pending) => {
+    setPendingMsg((list) =>
+      list.map((m) => (m.id === pending.id ? { ...m, state: "sending" } : m))
+    );
+    try {
+      const recipient = peopleRef.current.find((p) => sameAddress(p.address, pending.to));
+      const ciphertext = encrypt(pending.text, keysRef.current.secretKey, recipient.key);
+      await sendCiphertext(pending.to, ciphertext);
+      setPendingMsg((list) => list.filter((m) => m.id !== pending.id));
+      await readMessage(pending.to);
+      return true;
+    } catch (err) {
+      if (err.status === 401) lostSession();
+      setPendingMsg((list) =>
+        list.map((m) =>
+          m.id === pending.id ? { ...m, state: "failed", reason: errorMessage(err) } : m
+        )
+      );
+      return false;
+    }
   };
 
-  // The message shows at once as pending and is replaced by the stored one
-  // after the chain confirms it.
   const sendMessage = async ({ msg, address }) => {
     const text = msg?.trim();
     if (!text || !address) return false;
-    const pending = { id: Date.now(), to: address, sender: account, msg: text };
+    const pending = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      to: address,
+      sender: account,
+      text,
+      state: "sending",
+    };
     setPendingMsg((list) => [...list, pending]);
-    const sent = await runTransaction(
-      "message",
-      (contract) => contract.sendMessage(address, text),
-      async () => {
-        await readMessage(address);
-        await loadAccount(account);
-      }
-    );
-    setPendingMsg((list) => list.filter((m) => m.id !== pending.id));
-    return sent;
+    return deliver(pending);
   };
+
+  const retryMessage = (id) => {
+    const pending = pendingMsg.find((m) => m.id === id);
+    if (pending) deliver(pending);
+  };
+
+  const dismissMessage = (id) =>
+    setPendingMsg((list) => list.filter((m) => m.id !== id));
+
+  const friendLists = people.filter((p) => p.relation === "friend");
 
   return (
     <ChatAppContext.Provider
       value={{
         readMessage,
+        clearThread,
         createAccount,
-        addFriends,
+        requestFriend,
+        acceptFriend,
+        declineFriend,
         sendMessage,
+        retryMessage,
+        dismissMessage,
+        unlock,
         connectWallet,
         account,
         userName,
         ready,
         connecting,
+        unlocking,
+        unlocked,
         busy,
         friendLists,
         friendMsg,
         pendingMsg,
-        userLists,
+        people,
         error,
         clearError: () => setError(""),
-        userListsforleaderboard,
+        leaderboard,
         tokenBalance,
       }}
     >

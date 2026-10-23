@@ -13,15 +13,36 @@ const BackIcon = () => (
   </svg>
 );
 
+const POLL_MS = 4000;
+const MAX_CHARS = 1000;
+
 const Conversation = ({ name, address }) => {
   const [text, setText] = useState("");
   const end = useRef(null);
-  const { account, friendMsg, pendingMsg, readMessage, sendMessage, busy } =
-    useContext(ChatAppContext);
+  const {
+    account,
+    friendMsg,
+    pendingMsg,
+    readMessage,
+    clearThread,
+    sendMessage,
+    retryMessage,
+    dismissMessage,
+    unlock,
+    unlocked,
+    unlocking,
+  } = useContext(ChatAppContext);
 
   useEffect(() => {
+    clearThread();
+    if (!unlocked) return undefined;
     readMessage(address);
-  }, [address, readMessage]);
+    // New messages arrive by polling while the conversation is on screen.
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") readMessage(address);
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [address, unlocked, readMessage, clearThread]);
 
   const mine = pendingMsg.filter((m) => m.to === address);
   useEffect(() => {
@@ -33,7 +54,7 @@ const Conversation = ({ name, address }) => {
     const draft = text;
     if (!draft.trim()) return;
     setText("");
-    if (!(await sendMessage({ msg: draft, address }))) setText(draft);
+    sendMessage({ msg: draft, address });
   };
 
   return (
@@ -51,61 +72,94 @@ const Conversation = ({ name, address }) => {
         </div>
       </div>
 
-      <div className="messages">
-        {friendMsg.length === 0 && mine.length === 0 && (
-          <p className="side-empty">
-            No messages yet. Say hello; each message you send earns reward
-            tokens.
-          </p>
-        )}
-        {friendMsg.map((m, i) => (
-          <div
-            key={`${m.timestamp}-${i}`}
-            className={`bubble ${
-              m.sender.toLowerCase() === account.toLowerCase() ? "mine" : ""
-            }`}
-          >
-            {m.msg}
-            <div className="bubble-meta">{formatTime(m.timestamp)}</div>
+      {!unlocked ? (
+        <div className="messages">
+          <div className="empty">
+            <h2>Unlock your messages</h2>
+            <p>
+              Messages are encrypted in your browser, so only you and {name} can
+              read them. Sign two short texts in MetaMask to unlock them. It
+              costs no gas.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={unlock}
+              disabled={unlocking}
+            >
+              {unlocking && <Spinner />}
+              {unlocking ? "Check MetaMask" : "Unlock messages"}
+            </button>
           </div>
-        ))}
-        {mine.map((m) => (
-          <div key={m.id} className="bubble mine pending">
-            {m.msg}
-            <div className="bubble-meta">Waiting for the network</div>
+        </div>
+      ) : (
+        <>
+          <div className="messages">
+            {friendMsg.length === 0 && mine.length === 0 && (
+              <p className="side-empty">
+                No messages yet. Say hello; only you and {name} can read what
+                you write.
+              </p>
+            )}
+            {friendMsg.map((m) => (
+              <div
+                key={m.id}
+                className={`bubble ${
+                  m.sender.toLowerCase() === account.toLowerCase() ? "mine" : ""
+                } ${m.readable ? "" : "unreadable"}`}
+              >
+                {m.text}
+                <div className="bubble-meta">{formatTime(m.timestamp)}</div>
+              </div>
+            ))}
+            {mine.map((m) => (
+              <div key={m.id} className={`bubble mine pending ${m.state}`}>
+                {m.text}
+                {m.state === "sending" ? (
+                  <div className="bubble-meta">Sending</div>
+                ) : (
+                  <div className="bubble-meta">
+                    Not sent: {m.reason}{" "}
+                    <button type="button" className="link" onClick={() => retryMessage(m.id)}>
+                      Retry
+                    </button>{" "}
+                    <button type="button" className="link" onClick={() => dismissMessage(m.id)}>
+                      Discard
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+            <div ref={end} />
           </div>
-        ))}
-        <div ref={end} />
-      </div>
 
-      <form className="composer" onSubmit={submit}>
-        <label className="visually-hidden" htmlFor="message">
-          Message
-        </label>
-        <input
-          id="message"
-          className="input"
-          value={text}
-          placeholder={`Message ${name}`}
-          autoComplete="off"
-          onChange={(e) => setText(e.target.value)}
-        />
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={!text.trim() || busy === "message"}
-        >
-          {busy === "message" && <Spinner />}
-          Send
-        </button>
-      </form>
+          <form className="composer" onSubmit={submit}>
+            <label className="visually-hidden" htmlFor="message">
+              Message
+            </label>
+            <input
+              id="message"
+              className="input"
+              value={text}
+              maxLength={MAX_CHARS}
+              placeholder={`Message ${name}`}
+              autoComplete="off"
+              onChange={(e) => setText(e.target.value)}
+            />
+            <button type="submit" className="btn btn-primary" disabled={!text.trim()}>
+              Send
+            </button>
+          </form>
+        </>
+      )}
     </section>
   );
 };
 
 const Chat = () => {
-  const { account, userName, ready, friendLists, connectWallet, connecting } =
+  const { account, userName, ready, friendLists, people, connectWallet, connecting } =
     useContext(ChatAppContext);
+  const incoming = people.filter((p) => p.relation === "incoming").length;
   const { query } = useRouter();
   const address = query.address || "";
   const name = query.name || "";
@@ -117,7 +171,7 @@ const Chat = () => {
       <div className="page">
         <EmptyState
           title="Chat that pays you back"
-          text={`Connect your wallet to message friends on the ${NETWORK.chainName} network. Every message earns reward tokens.`}
+          text={`Connect your wallet to message friends on the ${NETWORK.chainName} network. Messages are end-to-end encrypted.`}
         >
           <button
             type="button"
@@ -151,7 +205,7 @@ const Chat = () => {
           <h1 className="side-title">Friends</h1>
           {friendLists.length === 0 ? (
             <div className="side-empty">
-              <p>You have no friends yet.</p>
+              <p>You have no friends yet. A friendship starts with a request and needs the other person to accept.</p>
               <p>
                 <Link href="/alluser" className="btn btn-small" style={{ marginTop: 12 }}>
                   Find people
@@ -161,23 +215,30 @@ const Chat = () => {
           ) : (
             <ul className="friend-list">
               {friendLists.map((f) => (
-                <li key={f.pubkey}>
+                <li key={f.address}>
                   <Link
                     className="friend"
                     aria-current={
-                      address.toLowerCase() === f.pubkey.toLowerCase()
+                      address.toLowerCase() === f.address.toLowerCase()
                     }
-                    href={{ pathname: "/", query: { name: f.name, address: f.pubkey } }}
+                    href={{ pathname: "/", query: { name: f.name, address: f.address } }}
                   >
-                    <Avatar name={f.name} address={f.pubkey} />
+                    <Avatar name={f.name} address={f.address} />
                     <span className="friend-text">
                       <span className="friend-name">{f.name}</span>
-                      <span className="friend-address">{shortAddress(f.pubkey)}</span>
+                      <span className="friend-address">{shortAddress(f.address)}</span>
                     </span>
                   </Link>
                 </li>
               ))}
             </ul>
+          )}
+          {incoming > 0 && (
+            <p className="side-empty">
+              <Link href="/alluser">
+                {incoming} friend {incoming === 1 ? "request is" : "requests are"} waiting
+              </Link>
+            </p>
           )}
         </aside>
 

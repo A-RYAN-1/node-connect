@@ -4,7 +4,7 @@ import { ChatAppContext } from "../Context/ChatAppContext";
 import { Avatar, EmptyState } from "../Components/index";
 
 const Leaderboard = () => {
-  const { account, ready, userListsforleaderboard } = useContext(ChatAppContext);
+  const { account, ready, leaderboard } = useContext(ChatAppContext);
 
   if (!ready) return <div className="page" />;
 
@@ -12,10 +12,10 @@ const Leaderboard = () => {
     <div className="page">
       <div className="page-head">
         <h1>Leaderboard</h1>
-        <p>Everyone ranked by the reward tokens they have earned.</p>
+        <p>Everyone ranked by the reward tokens they hold. Mining rewards arrive in a later release, so every balance starts at zero.</p>
       </div>
 
-      {userListsforleaderboard.length === 0 ? (
+      {leaderboard.length === 0 ? (
         <EmptyState
           title="Nobody here yet"
           text={
@@ -37,12 +37,12 @@ const Leaderboard = () => {
               </tr>
             </thead>
             <tbody>
-              {userListsforleaderboard.map((u, i) => (
-                <tr key={u.accountAddress}>
+              {leaderboard.map((u, i) => (
+                <tr key={u.address}>
                   <td>{i + 1}</td>
                   <td>
                     <span className="who">
-                      <Avatar name={u.name} address={u.accountAddress} size={28} />
+                      <Avatar name={u.name} address={u.address} size={28} />
                       {u.name}
                     </span>
                   </td>
