@@ -1,8 +1,11 @@
-import chatApp from "./ChatApp.json";
-import { CONTRACT_ADDRESS, NETWORK } from "./config";
+import registry from "./Registry.json";
+import token from "./NodeToken.json";
+import { NETWORK, REGISTRY_ADDRESS, TOKEN_ADDRESS } from "./config";
 
-export const ChatAppAddress = CONTRACT_ADDRESS;
-export const ChatAppABI = chatApp.abi;
+export const RegistryAddress = REGISTRY_ADDRESS;
+export const RegistryABI = registry.abi;
+export const TokenAddress = TOKEN_ADDRESS;
+export const TokenABI = token.abi;
 
 // Switch MetaMask to the configured network, adding it first if MetaMask
 // does not know it yet (error 4902).

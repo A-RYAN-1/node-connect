@@ -203,3 +203,36 @@ test("every response carries a request id and no-store", async () => {
   assert.match(res.headers.get("x-request-id"), /^[0-9a-f-]{36}$/);
   assert.equal(res.headers.get("cache-control"), "no-store");
 });
+
+test("a message to someone who is not an accepted friend is refused with 403", async () => {
+  const strict = await startServer({ friendsOnly: true });
+  try {
+    const alice = wallet();
+    const bob = wallet();
+    const a = client(strict.base);
+    await signIn(a, alice);
+    const body = { recipient: bob.address, ciphertext: "YWJj" };
+    const refused = await a.call("POST", "/api/messages", body);
+    assert.equal(refused.status, 403);
+    assert.equal(refused.json.error.code, "forbidden");
+    strict.befriend(alice.address, bob.address);
+    assert.equal((await a.call("POST", "/api/messages", body)).status, 201);
+  } finally {
+    await strict.close();
+  }
+});
+
+test("when the chain cannot be read the send fails with 503, not a stored message", async () => {
+  const broken = await startServer({
+    chain: { areFriends: async () => { throw new Error("rpc down"); } },
+  });
+  try {
+    const alice = wallet();
+    const a = client(broken.base);
+    await signIn(a, alice);
+    const res = await a.call("POST", "/api/messages", { recipient: wallet().address, ciphertext: "YWJj" });
+    assert.equal(res.status, 503);
+  } finally {
+    await broken.close();
+  }
+});

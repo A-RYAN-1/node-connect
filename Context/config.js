@@ -11,9 +11,30 @@ const required = (name, value) => {
   return value.trim();
 };
 
-export const CONTRACT_ADDRESS = required(
-  "NEXT_PUBLIC_CONTRACT_ADDRESS",
-  process.env.NEXT_PUBLIC_CONTRACT_ADDRESS
+const address = (name, value) => {
+  const text = required(name, value);
+  if (!/^0x[0-9a-fA-F]{40}$/.test(text)) {
+    throw new Error(`${name} is not an address: ${text}`);
+  }
+  return text;
+};
+
+export const REGISTRY_ADDRESS = address(
+  "NEXT_PUBLIC_REGISTRY_ADDRESS",
+  process.env.NEXT_PUBLIC_REGISTRY_ADDRESS
+);
+
+export const TOKEN_ADDRESS = address(
+  "NEXT_PUBLIC_TOKEN_ADDRESS",
+  process.env.NEXT_PUBLIC_TOKEN_ADDRESS
+);
+
+// Block the Registry was deployed in: where reading its events starts.
+export const REGISTRY_START_BLOCK = Number(
+  required(
+    "NEXT_PUBLIC_REGISTRY_START_BLOCK",
+    process.env.NEXT_PUBLIC_REGISTRY_START_BLOCK
+  )
 );
 
 export const NETWORK_NAME = required(
@@ -21,16 +42,14 @@ export const NETWORK_NAME = required(
   process.env.NEXT_PUBLIC_NETWORK
 );
 
-if (!/^0x[0-9a-fA-F]{40}$/.test(CONTRACT_ADDRESS)) {
-  throw new Error(
-    `NEXT_PUBLIC_CONTRACT_ADDRESS is not an address: ${CONTRACT_ADDRESS}`
-  );
-}
-
 if (!networks[NETWORK_NAME]) {
   throw new Error(
     `NEXT_PUBLIC_NETWORK must be one of: ${Object.keys(networks).join(", ")}`
   );
+}
+
+if (!Number.isInteger(REGISTRY_START_BLOCK) || REGISTRY_START_BLOCK < 0) {
+  throw new Error("NEXT_PUBLIC_REGISTRY_START_BLOCK must be a block number");
 }
 
 export const NETWORK = networks[NETWORK_NAME];

@@ -12,7 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Public values (see .env.example); the build fails without them
-      NEXT_PUBLIC_CONTRACT_ADDRESS: "0x8e4BBf86322Ab47D7cd2c6E313eEa72da328510C"
+      NEXT_PUBLIC_REGISTRY_ADDRESS: "0x6c03e1B8273F0Dd3A6d4d7E28B21d15Ad9e71802"
+      NEXT_PUBLIC_TOKEN_ADDRESS: "0xC6a2fbCB19E29371a35Bf721559902843F6e09b0"
+      NEXT_PUBLIC_REGISTRY_START_BLOCK: "3839041"
       NEXT_PUBLIC_NETWORK: hoodi
     steps:
       - uses: actions/checkout@v4
@@ -33,13 +35,15 @@ jobs:
           solc-select use 0.8.28
           npx hardhat compile
           slither . --hardhat-ignore-compile
-      - name: ABI in Context/ matches the contract
+      - name: ABIs in Context/ match the contracts
         run: |
           node -e '
-            const a = require("./artifacts/contracts/ChatApp.sol/ChatApp.json").abi;
-            const b = require("./Context/ChatApp.json").abi;
-            if (JSON.stringify(a) !== JSON.stringify(b)) {
-              console.error("Context/ChatApp.json is stale: run npm run abi");
-              process.exit(1);
+            for (const name of ["Registry", "NodeToken"]) {
+              const a = require(`./artifacts/contracts/${name}.sol/${name}.json`).abi;
+              const b = require(`./Context/${name}.json`).abi;
+              if (JSON.stringify(a) !== JSON.stringify(b)) {
+                console.error(`Context/${name}.json is stale: run npm run abi`);
+                process.exit(1);
+              }
             }'
       - run: npm run build

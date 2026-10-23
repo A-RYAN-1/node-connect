@@ -33,7 +33,8 @@ const AccountDialog = ({ onClose }) => {
         <h2 id="account-title">Create your account</h2>
         <p>
           Pick the name your friends will see. It is stored on the chain, so
-          MetaMask will ask you to confirm one transaction.
+          MetaMask will ask you to sign a text that creates your chat key and then
+          to confirm one transaction.
         </p>
         <div className="field">
           <label htmlFor="account-name">Name</label>

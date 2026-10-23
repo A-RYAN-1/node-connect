@@ -1,10 +1,13 @@
-import { BrowserProvider, Contract } from "ethers";
+import { BrowserProvider, Contract, JsonRpcProvider } from "ethers";
 
 import {
-  ChatAppAddress,
-  ChatAppABI,
+  RegistryAddress,
+  RegistryABI,
+  TokenAddress,
+  TokenABI,
   handleNetworkSwitch,
 } from "../Context/constants";
+import { NETWORK, REGISTRY_START_BLOCK } from "../Context/config";
 
 export const hasWallet = () =>
   typeof window !== "undefined" && Boolean(window.ethereum);
@@ -27,22 +30,36 @@ export const connectWallet = async () => {
   return accounts[0] || "";
 };
 
+const readProvider = () => new JsonRpcProvider(NETWORK.rpcUrls[0], undefined, { staticNetwork: true });
+
+// Read-only contracts go to the public RPC: they need no wallet prompt and
+// work before the wallet is connected.
+export const readRegistry = () => new Contract(RegistryAddress, RegistryABI, readProvider());
+export const readToken = () => new Contract(TokenAddress, TokenABI, readProvider());
+
+// The Registry with the wallet as signer, for transactions.
 export const connectingWithContract = async () => {
   if (!hasWallet()) throw new Error("MetaMask is not installed");
-  const provider = new BrowserProvider(window.ethereum);
-  const signer = await provider.getSigner();
-  return new Contract(ChatAppAddress, ChatAppABI, signer);
+  const signer = await new BrowserProvider(window.ethereum).getSigner();
+  return new Contract(RegistryAddress, RegistryABI, signer);
 };
 
-// ethers v6 returns structs as Result proxies whose named fields are lost
-// when spread, so the UI gets plain objects instead.
-export const toUser = (u) => ({ name: u.name, accountAddress: u.accountAddress });
-export const toFriend = (f) => ({ name: f.name, pubkey: f.pubkey });
-export const toMessage = (m) => ({
-  sender: m.sender,
-  timestamp: Number(m.timestamp),
-  msg: m.msg,
-});
+export const signWithWallet = (message, account) =>
+  window.ethereum.request({ method: "personal_sign", params: [message, account] });
+
+// Public RPC nodes cap the block range of one log query, so read in steps.
+const LOG_STEP = 9000;
+export const queryAllLogs = async (contract, filter) => {
+  const latest = await contract.runner.provider.getBlockNumber();
+  const ranges = [];
+  for (let from = REGISTRY_START_BLOCK; from <= latest; from += LOG_STEP) {
+    ranges.push([from, Math.min(from + LOG_STEP - 1, latest)]);
+  }
+  const parts = await Promise.all(
+    ranges.map(([from, to]) => contract.queryFilter(filter, from, to))
+  );
+  return parts.flat();
+};
 
 // MetaMask and ethers report the same user action under different codes.
 const errorCode = (error) => error?.code ?? error?.info?.error?.code;

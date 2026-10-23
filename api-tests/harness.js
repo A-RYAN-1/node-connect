@@ -38,7 +38,12 @@ async function startServer(overrides = {}) {
     allowedDomains: [DOMAIN],
     ...overrides.config,
   };
-  const api = createApi({ config, store, now: overrides.now, log: () => {} });
+  const friends = new Set();
+  const chain = {
+    // Everyone is a friend unless a test lists the pairs that are.
+    areFriends: async (a, b) => (overrides.friendsOnly ? friends.has([a, b].sort().join(":")) : true),
+  };
+  const api = createApi({ config, store, chain: overrides.chain || chain, now: overrides.now, log: () => {} });
   const table = routes(api);
 
   const server = http.createServer(async (req, res) => {
@@ -68,6 +73,7 @@ async function startServer(overrides = {}) {
     config,
     store,
     useNeon,
+    befriend: (a, b) => friends.add([a, b].sort().map((x) => x.toLowerCase()).join(":")),
     close: () => new Promise((resolve) => server.close(resolve)),
   };
 }
