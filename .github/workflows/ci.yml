@@ -24,6 +24,8 @@ jobs:
       - run: npm run lint
       - name: Contract tests
         run: npm test
+      - name: API tests (in-memory store)
+        run: npm run test:api
       - name: Slither static analysis
         run: |
           pip install slither-analyzer solc-select
