@@ -17,14 +17,19 @@
     "deploy-local": "hardhat run scripts/deploy.js --network localhost",
     "deploy:legacy": "hardhat run scripts/deploy-legacy.js --network hoodi",
     "verify": "hardhat run scripts/verify.js --network hoodi",
-    "slither": "slither . --hardhat-ignore-compile"
+    "slither": "slither . --hardhat-ignore-compile",
+    "db:migrate": "node scripts/migrate-db.js",
+    "test:api": "node --test api-tests/*.test.js"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
     "@openzeppelin/contracts": "^5.6.1",
     "ethers": "^6.17.0",
-    "next": "^16.4.0",
+    "iron-session": "^8.0.4",
+    "next": "^16.4.3",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "siwe": "^3.0.0"
   },
   "devDependencies": {
     "@noble/hashes": "^1.3.2",
@@ -32,7 +37,7 @@
     "@openzeppelin/merkle-tree": "^1.0.8",
     "dotenv": "^18.0.7",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.4.0",
+    "eslint-config-next": "^16.4.3",
     "hardhat": "^2.29.1"
   }
 }

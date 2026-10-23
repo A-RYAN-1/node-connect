@@ -60,8 +60,10 @@
 
 Most chat apps keep your account and your messages on a company's servers. Node Connect keeps them
 in a smart contract instead: your wallet address is your account, a friendship is recorded on chain
-for both people, and each message is appended to the chat the two of you share. There is no server
-and no database; the website is static files that talk to the contract through MetaMask.
+for both people, and each message is appended to the chat the two of you share. Today the chat UI
+has no server and no database: the pages are static files that talk to the contract through MetaMask.
+A small backend (sign-in with your wallet and an encrypted message store) is built and documented but
+not wired into the UI yet.
 
 To make activity worth something, the contract pays tokens: 5 for creating an account, 1 to each
 side for a friendship and 1 to each side for every message. A leaderboard ranks everyone by tokens.
@@ -110,6 +112,8 @@ screens for Hoodi accounts.</sub>
 - **Token rewards**: the contract pays 5 tokens per account, 1 to both sides per friendship and 1 to
   both sides per message; the header shows your balance.
 - **Leaderboard** of every user ranked by tokens.
+- **Messages API** (built, not yet used by the chat UI): sign in with your wallet (EIP-4361), then store and read
+  encrypted messages over HTTP; documented at `/api/docs`.
 - **Local chain mode**: the same app runs against a Hardhat node with test accounts, no testnet ETH
   needed.
 
@@ -127,8 +131,11 @@ every click cost a wallet confirmation and every message public.
 flowchart LR
     U["Browser + MetaMask"] --> V
     subgraph Vercel["Vercel (free)"]
-        V["Static Next.js export<br/>no server code"]
+        V["Prerendered Next.js pages"]
+        F["Vercel Functions<br/>/api: SIWE sign-in, messages"]
     end
+    F --> N[("Neon Postgres<br/>nonces, ciphertext")]
+    U -. "not used by the chat UI yet" .-> F
     U -- "reads (eth_call) and signed<br/>transactions, via ethers 6" --> R["Public Hoodi RPC node"]
     R --> C[("ChatApp contract<br/>Hoodi testnet")]
 ```
@@ -195,10 +202,11 @@ until the batch is published for recomputation (iteration 2).
 | Layer | Technology |
 |---|---|
 | Smart contract | Solidity 0.8.19, Hardhat 2 (compile, local node, tests, deploy) |
-| Frontend | Next.js 16 (static export), React 18, CSS Modules |
+| Frontend | Next.js 16 (pages router), React 18, CSS Modules |
+| Backend | Vercel Functions (Next.js `pages/api`), Sign-In with Ethereum (`siwe`), httpOnly cookie sessions (`iron-session`), Neon Postgres (`@neondatabase/serverless`), OpenAPI 3 with Swagger UI |
 | Chain access | ethers 6 through MetaMask (`BrowserProvider`) |
 | Network | Ethereum Hoodi testnet (chain 560048); a local Hardhat node (chain 1337) for development |
-| Tests and checks | Hardhat tests (Mocha, Chai), ESLint (Next.js rules), an ABI freshness check |
+| Tests and checks | Hardhat tests (Mocha, Chai), API tests (`node:test`), ESLint (Next.js rules), an ABI freshness check |
 | CI and hosting | GitHub Actions (CI on every push, daily uptime check), Vercel Hobby |
 | Local setup | Node 22 pinned with mise |
 
@@ -207,9 +215,9 @@ until the batch is published for recomputation (iteration 2).
 1. **The contract is the whole backend.** No server to run or pay for, and no one can edit the
    history. Trade-off: every write needs a wallet confirmation and gas, and everything stored is
    public, messages included.
-2. **A static export on Vercel.** The site is files only, so it is free to host and fast (Lighthouse
-   performance 99 on desktop). Trade-off: there is no server to index data, so the leaderboard makes
-   one call per user and sorts in the browser.
+2. **Prerendered pages on Vercel.** The pages are files, so they are free to host and fast (Lighthouse
+   performance 99 on desktop). The chat UI has no server to index data, so the leaderboard makes one
+   call per user and sorts in the browser; the new `/api` Functions are the start of fixing that.
 3. **Reads go through the user's wallet.** One provider for reads and writes keeps the code small.
    Trade-off: without MetaMask the app cannot show any data.
 4. **Configuration is checked in one place at build time.** `Context/config.js` stops the build when
@@ -242,6 +250,7 @@ pages/                     / (chat), /alluser (add friends), /leaderboard
 | Tests | 49 Hardhat tests, all passing on 2026-10-18: the 9 of `ChatApp`, plus the rework contracts (claim, replay, binding to the sender, cap, retarget, halving, every revert; registry and anchor rules; token cap and minter) |
 | CI | GitHub Actions on every push: ESLint, the contract tests, Slither (0 findings, the timestamp detector excluded because epochs are time-based), a check that `Context/ChatApp.json` matches the compiled contract, and the production build |
 | Uptime | A daily workflow requests `/`, `/alluser` and `/leaderboard` on the live site and fails unless each answers 200 with the app |
+| API | Sign-In with Ethereum (EIP-4361): single-use nonces that expire in 5 minutes, message domain and chain checked, session in an httpOnly SameSite=Lax cookie; the messages API accepts only base64 ciphertext, caps it at 4096 characters and rate limits 30 messages per minute per address; every response carries a request id and JSON logs hold no message content. 17 API tests pass against Neon and 18 against the in-memory store (2026-10-23) |
 | Security | No secrets in the frontend (only public `NEXT_PUBLIC_` values); the deployer key lives only in a local `.env`; security headers from `vercel.json` (`nosniff`, `DENY` framing, referrer and permissions policies) |
 | Measured | Lighthouse on the live site, 2026-10-12 (mobile / desktop): performance 89-90 / 99, accessibility 100 / 100, best practices 100 / 100, SEO 100 / 100 |
 | Dependencies | `npm audit --omit=dev` (what ships to the browser) reports no vulnerabilities; the remaining findings are in Hardhat's development toolchain |
@@ -251,8 +260,9 @@ Run them:
 ```bash
 npm run lint      # ESLint
 npm test          # contract tests
+npm run test:api  # API tests (add STORE=neon DATABASE_URL=... to run against Neon)
 npm run slither   # static analysis (pip install slither-analyzer solc-select)
-npm run build     # static export to out/
+npm run build     # production build
 ```
 
 ## Run it locally
@@ -318,18 +328,22 @@ All of them are listed with comments in [`.env.example`](.env.example).
 | `NEXT_PUBLIC_NETWORK` | Network MetaMask is switched to: `hoodi`, `sepolia` or `localhost` (`Context/networks.js`). Public. | app (build time) |
 | `HOODI_RPC_URL` | Hoodi RPC URL; defaults to the free public node | `npm run deploy`, optional |
 | `DEPLOYER_PRIVATE_KEY` | Key of a testnet-only deployer wallet. Secret: only in your local `.env`, never on the host | `npm run deploy` |
+| `DATABASE_URL` | Neon Postgres connection string. Secret. | API, `npm run db:migrate` |
+| `SESSION_SECRET` | 32+ random characters encrypting the session cookie. Secret. | API |
+| `SIWE_ALLOWED_DOMAINS` | Host(s) a sign-in message may name, for example `node-connect-sigma.vercel.app` | API (required in production) |
+| `SIWE_CHAIN_ID`, `MESSAGES_PER_MINUTE` | Optional overrides (defaults: 560048, 30) | API, optional |
 
 `NEXT_PUBLIC_` values are compiled into the public JavaScript, so they must never hold a secret.
 Never commit a real `.env` file; only `.env.example` is tracked.
 
 ## Deployment
 
-The site is a static export on Vercel's free Hobby plan; the contract lives on the Hoodi testnet at
+The site and its API run on Vercel's free Hobby plan (pages are prerendered, `pages/api` becomes Vercel Functions), with the messages in a free Neon Postgres database; the contract lives on the Hoodi testnet at
 [`0x8e4BBf86322Ab47D7cd2c6E313eEa72da328510C`](https://eth-hoodi.blockscout.com/address/0x8e4BBf86322Ab47D7cd2c6E313eEa72da328510C).
 
 | Part | Where it runs | How it deploys | Variables it needs |
 |---|---|---|---|
-| Website | Vercel Hobby (free), https://node-connect-sigma.vercel.app | automatically on every push to `main` (Vercel Git integration; checked 2026-10-16) | `NEXT_PUBLIC_CONTRACT_ADDRESS`, `NEXT_PUBLIC_NETWORK` (Production and Preview) |
+| Website | Vercel Hobby (free), https://node-connect-sigma.vercel.app | automatically on every push to `main` (Vercel Git integration; checked 2026-10-16) | `NEXT_PUBLIC_CONTRACT_ADDRESS`, `NEXT_PUBLIC_NETWORK`, `DATABASE_URL`, `SESSION_SECRET`, `SIWE_ALLOWED_DOMAINS` (Production and Preview) |
 | Contract | Hoodi testnet | by hand, `npm run deploy` from a local `.env`; never from CI | `DEPLOYER_PRIVATE_KEY`, optional `HOODI_RPC_URL` (local only) |
 
 What a visitor notices (checked 2026-10-16): the site itself has no cold start; every write waits for
@@ -340,8 +354,9 @@ times.
 <summary><strong>Host your own copy on Vercel</strong></summary>
 
 1. Import the repository in Vercel (framework: Next.js, no root directory).
-2. Set `NEXT_PUBLIC_CONTRACT_ADDRESS` and `NEXT_PUBLIC_NETWORK` in the project's Environment
-   Variables for Production and Preview. Nothing secret is needed.
+2. Create a free Neon database (Vercel Storage), run `npm run db:migrate` once with its `DATABASE_URL`,
+   and set `NEXT_PUBLIC_CONTRACT_ADDRESS`, `NEXT_PUBLIC_NETWORK`, `DATABASE_URL`, `SESSION_SECRET` and
+   `SIWE_ALLOWED_DOMAINS` in the project's Environment Variables for Production and Preview.
 3. Deploy. `vercel.json` adds the security headers; `.vercelignore` keeps env files and build output
    out of CLI uploads.
 
@@ -356,10 +371,7 @@ adding a friend and sending a message on Hoodi.
 
 **Known limitations**
 
-- MetaMask flags the site and the contract as high risk, because the contract was deployed from a
-  wallet whose private key leaked (it was committed in 2025; the file is gone and the history was
-  rewritten, but the key had already been taken). Only a redeploy from a fresh wallet fixes it.
-- Messages are stored as plain text on a public chain: anyone can read any chat.
+- Messages in the chat UI are still stored as plain text on a public chain: anyone can read any chat. The new messages API stores ciphertext only; the UI moves to it, with encryption, in the next step. The API does not yet check that two addresses are friends on chain.
 - Tokens are a balance inside the contract, not an ERC-20, and the rewards can be farmed with two
   accounts of your own. `mineMessageSafe` can be called again for the same message, so it is not
   safe to wire into the UI.
@@ -374,8 +386,9 @@ adding a friend and sending a message on Hoodi.
 - [x] Contracts and tests (done 2026-10-18, deployed and verified from a fresh wallet; the site switches in a later step): an OpenZeppelin ERC-20 token (TOK) with a hard cap, a registry with
       friend requests (request, accept, decline, remove, block), deployed and verified from a fresh
       wallet, which should also end the MetaMask warning
-- [ ] Backend on Vercel Functions and Neon: Sign-In with Ethereum, a messages API that stores only
-      ciphertext, and a scheduled job that anchors each day's message hashes on chain
+- [x] Backend on Vercel Functions and Neon (built 2026-10-23): Sign-In with Ethereum, a messages API that
+      stores only ciphertext, OpenAPI at `/api/openapi.json` and Swagger UI at `/api/docs`; the chat UI
+      does not use it yet (next step). Still to do: the scheduled job that anchors each day's message hashes on chain
 - [ ] End-to-end encrypted chats (keys derived from one wallet signature) and a new chat UI with
       pending and failed states
 - [ ] Real token mining: proof of activity plus proof of work, one claim per user per day, bound to
