@@ -1,6 +1,5 @@
 const { ethers } = require("hardhat");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
-const { keccak_256 } = require("@noble/hashes/sha3");
 const { StandardMerkleTree } = require("@openzeppelin/merkle-tree");
 
 const DAY = 24 * 60 * 60;
@@ -31,37 +30,11 @@ function buildTree(entries) {
   );
 }
 
-// Work hash as Mining computes it: keccak256(abi.encode(root, user, nonce)),
-// three 32-byte words. Mining 2^16 hashes per claim needs a fast hash, so this
-// uses noble directly and only rewrites the nonce word between attempts.
-function preimage(root, user) {
-  const data = new Uint8Array(96);
-  data.set(ethers.getBytes(root), 0);
-  data.set(ethers.getBytes(ethers.zeroPadValue(user, 32)), 32);
-  return data;
-}
+// The proof of work is the code the browser miner ships.
+const { solve, workHash } = require("../lib/client/pow");
 
-function writeNonce(data, nonce) {
-  new DataView(data.buffer).setBigUint64(88, nonce);
-}
-
-function hashValue(data) {
-  return BigInt("0x" + Buffer.from(keccak_256(data)).toString("hex"));
-}
-
-function workHash(root, user, nonce) {
-  const data = preimage(root, user);
-  writeNonce(data, nonce);
-  return hashValue(data);
-}
-
-// Finds a nonce whose work hash is below the target, like the browser miner.
 function mine(root, user, target) {
-  const data = preimage(root, user);
-  for (let nonce = 0n; ; nonce++) {
-    writeNonce(data, nonce);
-    if (hashValue(data) < target) return nonce;
-  }
+  return solve(root, user, target);
 }
 
 async function nextEpoch(anchor) {
