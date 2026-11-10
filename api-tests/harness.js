@@ -16,6 +16,9 @@ function routes(api) {
     "/api/auth/logout": api.logout,
     "/api/messages": api.messages,
     "/api/health": api.health,
+    "/api/mining/batch": api.miningBatch,
+    "/api/mining/proof": api.miningProof,
+    "/api/mining/anchor": api.miningAnchor,
   };
 }
 

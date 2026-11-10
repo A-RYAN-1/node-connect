@@ -12,6 +12,7 @@ import Spinner from "./Spinner";
 const links = [
   { label: "Chat", href: "/" },
   { label: "Find people", href: "/alluser" },
+  { label: "Mine", href: "/mine" },
   { label: "Leaderboard", href: "/leaderboard" },
 ];
 

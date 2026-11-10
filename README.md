@@ -38,7 +38,7 @@
   </a>
 </p>
 
-<p align="center"><sub>Last updated: 2026-10-23 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
+<p align="center"><sub>Last updated: 2026-11-10 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
 
 ---
 
@@ -65,9 +65,10 @@ messages to you is published there. The messages themselves travel through a sma
 Functions and a Neon database) that stores only ciphertext. The key is derived in your browser from
 one wallet signature, so the server, the database and the chain never see a message in the clear.
 
-Rewards are being rebuilt as a real ERC-20 token (TOK) with limits per day. The token contract is
-deployed and the leaderboard reads balances from it, but mining is not wired into the site yet, so
-every balance is zero for now.
+Rewards are a real ERC-20 token (TOK) with limits per day. A day with at least 5 messages to a friend
+who wrote back can be claimed the next day on the Mine page: the server counts the day's messages,
+posts a Merkle root of the pairs to the chain once a day, and the browser solves a small proof of
+work and sends one claim transaction.
 
 ## Try it live
 
@@ -112,7 +113,11 @@ screens for Hoodi accounts.</sub>
 - **Pending and failed states**: a message shows at once as sending; if the API refuses it, it stays
   in the thread as not sent with Retry and Discard.
 - **Live thread**: the open conversation polls every 4 seconds while the tab is visible.
-- **Leaderboard** of every user by TOK balance (mining arrives in a later release).
+- **Mining**: the Mine page shows yesterday's claim, solves the proof of work in a Web Worker and sends
+  `Mining.claim`; the server builds each day's Merkle tree from message counts (never content) and
+  publishes its leaves at `/api/mining/batch` so anyone can recompute the root. A daily Vercel cron
+  (`/api/mining/anchor`, 00:10 UTC) posts the root as the relayer.
+- **Leaderboard** of every user by TOK balance.
 - **Messages API**: documented at `/api/docs` (OpenAPI 3 and Swagger UI).
 - **Local chain mode**: the same app runs against a Hardhat node with test accounts.
 
@@ -262,7 +267,7 @@ pages/                     / (chat), /alluser (find people and requests), /leade
 
 | Area | What is in place |
 |---|---|
-| Tests | 49 Hardhat tests, all passing on 2026-10-18: the 9 of `ChatApp`, plus the rework contracts (claim, replay, binding to the sender, cap, retarget, halving, every revert; registry and anchor rules; token cap and minter) |
+| Tests | 50 Hardhat tests (2026-11-10, one is an end-to-end claim); on 2026-10-18 49 passed: the 9 of `ChatApp`, plus the rework contracts (claim, replay, binding to the sender, cap, retarget, halving, every revert; registry and anchor rules; token cap and minter) |
 | CI | GitHub Actions on every push: ESLint, the contract tests, Slither (0 findings, the timestamp detector excluded because epochs are time-based), a check that `Context/Registry.json` and `Context/NodeToken.json` match the compiled contracts, and the production build |
 | Uptime | A daily workflow requests `/`, `/alluser` and `/leaderboard` on the live site and fails unless each answers 200 with the app |
 | API | Sign-In with Ethereum (EIP-4361): single-use nonces that expire in 5 minutes, message domain and chain checked, session in an httpOnly SameSite=Lax cookie; the messages API accepts only base64 ciphertext, caps it at 4096 characters and rate limits 30 messages per minute per address; every response carries a request id and JSON logs hold no message content. every send is checked against the Registry (403 for a non-friend, 503 when the chain cannot be read); 17 API tests pass against Neon and 26 tests (API plus 6 crypto) against the in-memory store (2026-10-23) |
@@ -344,7 +349,10 @@ All of them are listed with comments in [`.env.example`](.env.example).
 | `NEXT_PUBLIC_NETWORK` | Network MetaMask is switched to: `hoodi`, `sepolia` or `localhost` (`Context/networks.js`). Public. | app (build time) |
 | `HOODI_RPC_URL` | Hoodi RPC URL; defaults to the free public node | `npm run deploy`, optional |
 | `DEPLOYER_PRIVATE_KEY` | Key of a testnet-only deployer wallet. Secret: only in your local `.env`, never on the host | `npm run deploy` |
+| `NEXT_PUBLIC_MINING_ADDRESS` | Address of the deployed `Mining` contract. Public. | app (build time) |
 | `DATABASE_URL` | Neon Postgres connection string. Secret. | API, `npm run db:migrate` |
+| `RELAYER_PRIVATE_KEY` | Key of the relayer wallet that posts each day's root to `ChatAnchor`. Secret: host secret store only. | anchor job |
+| `CRON_SECRET`, `BATCH_BASE_URL` | Bearer secret the daily job sends to `/api/mining/anchor`, and the site's origin written into each anchor. | anchor job |
 | `SESSION_SECRET` | 32+ random characters encrypting the session cookie. Secret. | API |
 | `SIWE_ALLOWED_DOMAINS` | Host(s) a sign-in message may name, for example `node-connect-sigma.vercel.app` | API (required in production) |
 | `SIWE_CHAIN_ID`, `MESSAGES_PER_MINUTE`, `REGISTRY_ADDRESS`, `HOODI_RPC_URL` | Optional overrides (defaults: 560048, 30, the Registry in `deployments/hoodi.json`, the public node); the API uses the last two to check friendships | API, optional |
@@ -391,8 +399,9 @@ adding a friend and sending a message on Hoodi.
 - The server sees who messages whom and when, and can drop a message; it cannot read one. Losing
   the wallet means losing the key: old messages cannot be opened again.
 - Opening messages needs a signature per page load (the key is not stored anywhere).
-- Rewards: mining is not wired in yet, so every TOK balance is zero. The legacy in-contract balance
-  is no longer shown.
+- Rewards: the relayer is trusted to post true roots; the batch behind each root is public, so a wrong
+  one can be shown, but the contract cannot check it. A claim needs an account at least a day old and
+  can only be made the day after the activity.
 - Creating an account and answering a friend request still cost a MetaMask confirmation and gas.
 - Friend and user lists are rebuilt from contract events and one read per user on every load; fine
   for a demo-sized network, not for thousands of users.
@@ -408,8 +417,9 @@ adding a friend and sending a message on Hoodi.
       is used by the chat UI since the encrypted-chat release. Still to do: the scheduled job that anchors each day's message hashes on chain
 - [x] End-to-end encrypted chats (keys derived from one wallet signature) and the chat UI wired to the API with
       sending, failed and retry states (merged and live 2026-10-23, PR #4)
-- [ ] Real token mining: proof of activity plus proof of work, one claim per user per day, bound to
-      the sender, with retargeting and halving; mined in a Web Worker
+- [x] Real token mining: proof of activity plus proof of work, one claim per user per day, bound to
+      the sender, with retargeting and halving; mined in a Web Worker (built 2026-11-10: server batches,
+      daily anchor job, Mine page; 50 Hardhat tests including an end-to-end claim, 30 API tests)
 - [ ] Production checks again (Slither in CI, API tests, Lighthouse), then this README
 
 ## Credits

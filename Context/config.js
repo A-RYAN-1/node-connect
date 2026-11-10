@@ -29,6 +29,11 @@ export const TOKEN_ADDRESS = address(
   process.env.NEXT_PUBLIC_TOKEN_ADDRESS
 );
 
+export const MINING_ADDRESS = address(
+  "NEXT_PUBLIC_MINING_ADDRESS",
+  process.env.NEXT_PUBLIC_MINING_ADDRESS
+);
+
 // Block the Registry was deployed in: where reading its events starts.
 export const REGISTRY_START_BLOCK = Number(
   required(

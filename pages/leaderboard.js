@@ -12,7 +12,7 @@ const Leaderboard = () => {
     <div className="page">
       <div className="page-head">
         <h1>Leaderboard</h1>
-        <p>Everyone ranked by the reward tokens they hold. Mining rewards arrive in a later release, so every balance starts at zero.</p>
+        <p>Everyone ranked by the reward tokens they hold. Tokens come from mining: send messages to a friend, they write back, then claim on the Mine page.</p>
       </div>
 
       {leaderboard.length === 0 ? (
