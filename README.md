@@ -34,11 +34,11 @@
 
 <p align="center">
   <a href="https://node-connect-sigma.vercel.app">
-    <img src="docs/images/chat.png" width="90%" alt="Chat screen: friends list on the left, the chat with bob on the right, the account name and an 11 TOK balance in the header">
+    <img src="docs/images/chat.png" width="90%" alt="Chat screen: friends list on the left, the decrypted conversation with bob on the right, the account name and a 50 TOK balance in the header">
   </a>
 </p>
 
-<p align="center"><sub>Last updated: 2026-11-10 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
+<p align="center"><sub>Last updated: 2026-11-12 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
 
 ---
 
@@ -87,18 +87,26 @@ Things to try in the first two minutes (use two MetaMask accounts, one per brows
 3. Open **Find people** and send a request; the other account sees it there and accepts.
 4. Open the chat, choose **Unlock messages** (two signatures, no gas) and send a message: it shows
    as sending, then lands in the thread. The other side sees it within a few seconds.
-5. Open the **Leaderboard** to see everyone and their TOK balance.
+5. The next day, open **Mine**: a day with at least 5 messages to a friend who wrote back shows as
+   ready; **Mine and claim** solves the proof of work in the browser and sends one transaction.
+6. Open the **Leaderboard** to see everyone and their TOK balance.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/find-friends.png" alt="Find people page: dave and erin, each with an Add friend button"><p align="center"><sub>Registered users you can add, read from the contract (<a href="#the-contract">how friendships work</a>)</sub></p></td>
-    <td width="50%"><img src="docs/images/leaderboard.png" alt="Leaderboard: alice 11, bob 10, carol 6, dave 5, erin 5 tokens"><p align="center"><sub>Everyone ranked by tokens (<a href="#the-contract">the reward rules</a>)</sub></p></td>
+    <td width="50%"><img src="docs/images/find-friends.png" alt="Find people page: dave and erin, each with a Send request button"><p align="center"><sub>Registered users you can add, read from the contract (<a href="#the-contract">how friendships work</a>)</sub></p></td>
+    <td width="50%"><img src="docs/images/leaderboard.png" alt="Leaderboard: alice 50 tokens after one claim, bob, carol, dave and erin 0"><p align="center"><sub>Everyone ranked by tokens (<a href="#the-contract">the reward rules</a>)</sub></p></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/mine.png" alt="Mine page: day 0, reward 50 TOK, claims so far 0, ready with 6 messages counted with a friend, and a Mine and claim button"><p align="center"><sub>Yesterday's claim, ready (<a href="#features">how mining works</a>)</sub></p></td>
+    <td width="50%"><img src="docs/images/mine-claimed.png" alt="Mine page after the claim: claims so far 1, You already claimed this day, Claimed 50 TOK for day 0"><p align="center"><sub>After the proof of work and the claim transaction</sub></p></td>
   </tr>
 </table>
 
-<sub>Screenshots: the production build of this commit on a local Hardhat chain seeded with demo
-accounts (alice, bob, carol, dave, erin), 1440x900, 2026-10-21. The live site shows the same
-screens for Hoodi accounts.</sub>
+<sub>Screenshots: the production build of `main` on 2026-11-12 against a local Hardhat chain with
+demo accounts (alice, bob, carol, dave, erin), 1440x900. The day's messages went through the real
+API and encryption; the day's root was anchored by the relayer job and the claim was mined on that
+chain. The live site shows the same screens for Hoodi accounts; a live claim waits on the relayer
+key being set in production.</sub>
 
 ## Features
 
