@@ -1,0 +1,15 @@
+{
+  "features": [
+    "log1p peak per minute",
+    "reciprocity",
+    "log1p distinct recipients",
+    "age over 30 days"
+  ],
+  "weights": [
+    8.136949905588416,
+    -1.2011251571038657,
+    -6.756159886421005,
+    -3.7476790672406164
+  ],
+  "bias": -2.2267249073615205
+}

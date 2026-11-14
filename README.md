@@ -38,7 +38,7 @@
   </a>
 </p>
 
-<p align="center"><sub>Last updated: 2026-11-12 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
+<p align="center"><sub>Last updated: 2026-11-14 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
 
 ---
 
@@ -125,6 +125,13 @@ key being set in production.</sub>
   `Mining.claim`; the server builds each day's Merkle tree from message counts (never content) and
   publishes its leaves at `/api/mining/batch` so anyone can recompute the root. A daily Vercel cron
   (`/api/mining/anchor`, 00:10 UTC) posts the root as the relayer.
+- **Abuse score**: before a batch is built, every sender gets a score from message metadata only (peak
+  messages in one minute, how many of their messages were answered, distinct recipients, account age;
+  never ciphertext). A small logistic model, trained by `node scripts/abuse-eval.js --write` on a seeded
+  simulated population, flags farming accounts and the batch leaves them out. On five simulated
+  populations it never saw (1,899 senders, 399 farming; 2026-11-14) it reached precision 0.992 and
+  recall 0.987, against 0.437 and 0.226 for the rule "flag a sender nobody answers"; 3 honest senders
+  were flagged. Messaging is never blocked, only the reward.
 - **Leaderboard** of every user by TOK balance.
 - **Messages API**: documented at `/api/docs` (OpenAPI 3 and Swagger UI).
 - **Local chain mode**: the same app runs against a Hardhat node with test accounts.
@@ -410,6 +417,7 @@ adding a friend and sending a message on Hoodi.
 - Rewards: the relayer is trusted to post true roots; the batch behind each root is public, so a wrong
   one can be shown, but the contract cannot check it. A claim needs an account at least a day old and
   can only be made the day after the activity.
+- The abuse score is measured only on simulated accounts whose behaviour I wrote, so the numbers show it separates those shapes, not real users. A new honest account that sends several messages inside one minute to one friend can be flagged and earn nothing that day. The weights in `lib/server/abuseModel.json` are frozen: retraining changes which senders are flagged, so past batches would no longer recompute to their anchored roots.
 - Creating an account and answering a friend request still cost a MetaMask confirmation and gas.
 - Friend and user lists are rebuilt from contract events and one read per user on every load; fine
   for a demo-sized network, not for thousands of users.
@@ -428,6 +436,7 @@ adding a friend and sending a message on Hoodi.
 - [x] Real token mining: proof of activity plus proof of work, one claim per user per day, bound to
       the sender, with retargeting and halving; mined in a Web Worker (built 2026-11-10: server batches,
       daily anchor job, Mine page; 50 Hardhat tests including an end-to-end claim, 30 API tests)
+- [x] Abuse score from message metadata, measured on simulated farming accounts, applied to the mining batch (built 2026-11-14; 35 API tests)
 - [ ] Production checks again (Slither in CI, API tests, Lighthouse), then this README
 
 ## Credits
