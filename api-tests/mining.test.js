@@ -22,15 +22,17 @@ const chain = {
 };
 
 let env;
-const [alice, bob, carol] = [newWallet(), newWallet(), newWallet()];
+const [alice, bob, carol, dave, erin] = [newWallet(), newWallet(), newWallet(), newWallet(), newWallet()];
 const lower = (w) => w.address.toLowerCase();
 
-async function send(from, to, times) {
+// gapSeconds is how long a person takes between messages; 0 is a script.
+async function send(from, to, times, gapSeconds = 200) {
   const c = client(env.base);
   assert.equal((await signIn(c, from)).status, 200);
   for (let i = 0; i < times; i++) {
     const res = await c.call("POST", "/api/messages", { recipient: to.address, ciphertext: "Y2lwaGVy" });
     assert.equal(res.status, 201);
+    clock += gapSeconds * 1000;
   }
   return c;
 }
@@ -89,6 +91,9 @@ test("the proof and batch endpoints serve the epoch's claims and the cron anchor
   const a = await send(alice, bob, 5);
   await send(bob, alice, 2);
   await send(carol, alice, 6);
+  // A fresh ring trading bursts: reciprocal and over the minimum, so only the abuse score stops it.
+  await send(dave, erin, 6, 1);
+  await send(erin, dave, 6, 1);
   clock += DAY * 1000;
 
   const batch = await client(env.base).call("GET", "/api/mining/batch?epoch=3");
