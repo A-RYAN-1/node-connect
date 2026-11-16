@@ -19,7 +19,8 @@
     "verify": "hardhat run scripts/verify.js --network hoodi",
     "slither": "slither . --hardhat-ignore-compile",
     "db:migrate": "node scripts/migrate-db.js",
-    "test:api": "node --test api-tests/*.test.js"
+    "test:api": "node --test api-tests/*.test.js",
+    "test:e2e": "node e2e/run.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
@@ -39,6 +40,7 @@
     "dotenv": "^18.0.7",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.3",
-    "hardhat": "^2.29.1"
+    "hardhat": "^2.29.1",
+    "playwright-core": "^1.57.0"
   }
 }
