@@ -38,7 +38,7 @@
   </a>
 </p>
 
-<p align="center"><sub>Last updated: 2026-11-14 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
+<p align="center"><sub>Last updated: 2026-11-16 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
 
 ---
 
@@ -231,7 +231,7 @@ until the batch is published for recomputation (iteration 2).
 | Backend | Vercel Functions (Next.js `pages/api`), Sign-In with Ethereum (`siwe`), httpOnly cookie sessions (`iron-session`), Neon Postgres (`@neondatabase/serverless`), OpenAPI 3 with Swagger UI |
 | Chain access | ethers 6: reads through the public RPC, transactions through MetaMask (`BrowserProvider`); the server reads friendships with a `JsonRpcProvider` |
 | Network | Ethereum Hoodi testnet (chain 560048); a local Hardhat node (chain 1337) for development |
-| Tests and checks | Hardhat tests (Mocha, Chai), API tests (`node:test`), ESLint (Next.js rules), an ABI freshness check, crypto round-trip tests |
+| Tests and checks | Hardhat tests (Mocha, Chai), API tests (`node:test`), a browser test (Playwright on a local chain with two mock wallets), ESLint (Next.js rules), an ABI freshness check, crypto round-trip tests |
 | CI and hosting | GitHub Actions (CI on every push, daily uptime check), Vercel Hobby |
 | Local setup | Node 22 pinned with mise |
 
@@ -296,6 +296,7 @@ Run them:
 npm run lint      # ESLint
 npm test          # contract tests
 npm run test:api  # API tests (add STORE=neon DATABASE_URL=... to run against Neon)
+npm run test:e2e  # browser test: local chain, mock wallets, two accounts become friends and exchange a message (needs Chrome)
 npm run slither   # static analysis (pip install slither-analyzer solc-select)
 npm run build     # production build
 ```

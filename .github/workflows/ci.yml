@@ -29,6 +29,8 @@ jobs:
         run: npm test
       - name: API tests (in-memory store)
         run: npm run test:api
+      - name: Browser test (local chain, mock wallets, real pages)
+        run: npm run test:e2e
       - name: Slither static analysis
         run: |
           pip install slither-analyzer solc-select
