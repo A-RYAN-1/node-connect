@@ -15,6 +15,9 @@ function routes(api) {
     "/api/auth/session": api.session,
     "/api/auth/logout": api.logout,
     "/api/messages": api.messages,
+    "/api/groups": api.groups,
+    "/api/groups/members": api.groupMembers,
+    "/api/groups/messages": api.groupMessages,
     "/api/health": api.health,
     "/api/mining/batch": api.miningBatch,
     "/api/mining/proof": api.miningProof,
@@ -76,7 +79,7 @@ async function startServer(overrides = {}) {
     config,
     store,
     useNeon,
-    befriend: (a, b) => friends.add([a, b].sort().map((x) => x.toLowerCase()).join(":")),
+    befriend: (a, b) => friends.add([a, b].map((x) => x.toLowerCase()).sort().join(":")),
     close: () => new Promise((resolve) => server.close(resolve)),
   };
 }

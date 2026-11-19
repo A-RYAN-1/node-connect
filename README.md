@@ -38,7 +38,7 @@
   </a>
 </p>
 
-<p align="center"><sub>Last updated: 2026-11-16 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
+<p align="center"><sub>Last updated: 2026-11-19 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
 
 ---
 
@@ -118,6 +118,13 @@ key being set in production.</sub>
 - **End-to-end encrypted chat**: X25519 keys come from one wallet signature, messages are sealed in
   the browser (NaCl box) and the server stores base64 ciphertext only. The API accepts a message only
   between accepted friends, checked on chain.
+- **Group chats**: a friend picks a name and up to 19 friends; the owner's browser makes one random
+  room key and locks a copy for each member with the same X25519 keys (the group name travels inside
+  the locked copy). Messages are sealed with that room key (NaCl secretbox). The server stores the owner,
+  a key version, the locked copies and ciphertext, so it cannot read the name or a message. The owner
+  adds friends (they read from then on) and removes members: removal starts a new key version, locked
+  only for the people who stay, so the removed member can read nothing sent afterwards. Group messages
+  never count toward mining and share the per-minute send limit with direct messages.
 - **Pending and failed states**: a message shows at once as sending; if the API refuses it, it stays
   in the thread as not sent with Retry and Discard.
 - **Live thread**: the open conversation polls every 4 seconds while the tab is visible.
@@ -133,7 +140,7 @@ key being set in production.</sub>
   recall 0.987, against 0.437 and 0.226 for the rule "flag a sender nobody answers"; 3 honest senders
   were flagged. Messaging is never blocked, only the reward.
 - **Leaderboard** of every user by TOK balance.
-- **Messages API**: documented at `/api/docs` (OpenAPI 3 and Swagger UI).
+- **Messages and groups API**: documented at `/api/docs` (OpenAPI 3 and Swagger UI).
 - **Local chain mode**: the same app runs against a Hardhat node with test accounts.
 
 ## Why it exists
@@ -296,7 +303,7 @@ Run them:
 npm run lint      # ESLint
 npm test          # contract tests
 npm run test:api  # API tests (add STORE=neon DATABASE_URL=... to run against Neon)
-npm run test:e2e  # browser test: local chain, mock wallets, two accounts become friends and exchange a message (needs Chrome)
+npm run test:e2e  # browser test: local chain, mock wallets, friends, a message, then a three-person group with a removal (needs Chrome)
 npm run slither   # static analysis (pip install slither-analyzer solc-select)
 npm run build     # production build
 ```
@@ -415,6 +422,11 @@ adding a friend and sending a message on Hoodi.
 - The server sees who messages whom and when, and can drop a message; it cannot read one. Losing
   the wallet means losing the key: old messages cannot be opened again.
 - Opening messages needs a signature per page load (the key is not stored anywhere).
+- Groups: only the owner changes the members, a group cannot be renamed or deleted, and a member
+  removed from a group keeps whatever they already decrypted. A member added later reads from the key
+  version they were added to, not the older history. The server sees who is in a group and when
+  members post. Checked only with the API tests (12 on groups, passing on Neon and in memory, 2026-11-19)
+  and the browser test; not yet on the live site.
 - Rewards: the relayer is trusted to post true roots; the batch behind each root is public, so a wrong
   one can be shown, but the contract cannot check it. A claim needs an account at least a day old and
   can only be made the day after the activity.
@@ -438,6 +450,8 @@ adding a friend and sending a message on Hoodi.
       the sender, with retargeting and halving; mined in a Web Worker (built 2026-11-10: server batches,
       daily anchor job, Mine page; 50 Hardhat tests including an end-to-end claim, 30 API tests)
 - [x] Abuse score from message metadata, measured on simulated farming accounts, applied to the mining batch (built 2026-11-14; 35 API tests)
+- [x] Group chats with a shared room key locked per member, owner adds and removes, new key on removal
+      (built 2026-11-19: 12 API tests on groups, browser test with three wallets)
 - [ ] Production checks again (Slither in CI, API tests, Lighthouse), then this README
 
 ## Credits

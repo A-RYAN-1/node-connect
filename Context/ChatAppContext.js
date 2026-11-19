@@ -12,13 +12,29 @@ import {
   signWithWallet,
   errorMessage,
 } from "../Utils/apiFeature";
-import { getSession, signIn, sendCiphertext, listThread } from "../Utils/chatApi";
+import {
+  getSession,
+  signIn,
+  sendCiphertext,
+  listThread,
+  listGroups,
+  createGroupRoom,
+  addGroupMember,
+  removeGroupMember,
+  sendGroupCiphertext,
+  listGroupThread,
+} from "../Utils/chatApi";
 import {
   KEY_MESSAGE,
   keyPairFromSignature,
   encrypt,
   decrypt,
   toHex,
+  newRoomKey,
+  wrapRoomKey,
+  unwrapRoomKey,
+  encryptRoom,
+  decryptRoom,
 } from "../lib/client/crypto";
 
 export const ChatAppContext = React.createContext();
@@ -37,6 +53,8 @@ export const ChatAppProvider = ({ children }) => {
   const [people, setPeople] = useState([]);
   const [friendMsg, setFriendMsg] = useState([]);
   const [pendingMsg, setPendingMsg] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [groupMsg, setGroupMsg] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [tokenBalance, setTokenBalance] = useState(0);
   const [error, setError] = useState("");
@@ -44,6 +62,7 @@ export const ChatAppProvider = ({ children }) => {
   const keysRef = useRef(null);
   const peopleRef = useRef([]);
   const sessionRef = useRef(false);
+  const groupsRef = useRef([]);
 
   const router = useRouter();
 
@@ -171,6 +190,7 @@ export const ChatAppProvider = ({ children }) => {
       }
       await ensureSession();
       setUnlocked(true);
+      await loadGroups();
       return true;
     } catch (err) {
       keysRef.current = null;
@@ -180,6 +200,57 @@ export const ChatAppProvider = ({ children }) => {
       setUnlocking(false);
     }
   };
+
+  // Public key of anyone with a profile, me included.
+  const keyOf = (address) =>
+    sameAddress(address, account)
+      ? toHex(keysRef.current.publicKey)
+      : peopleRef.current.find((p) => sameAddress(p.address, address))?.key;
+
+  const nameOf = (address) =>
+    sameAddress(address, account)
+      ? userName || "You"
+      : peopleRef.current.find((p) => sameAddress(p.address, address))?.name || "Unknown";
+
+  // Groups from the API: each wrapped key is opened with my secret key and the
+  // owner's public key. The newest key version also carries the group name.
+  const loadGroups = useCallback(async () => {
+    if (!keysRef.current || !sessionRef.current) return;
+    try {
+      const rows = await listGroups();
+      const opened = rows.map((g) => {
+        const ownerKey = sameAddress(g.owner, account)
+          ? toHex(keysRef.current.publicKey)
+          : peopleRef.current.find((p) => sameAddress(p.address, g.owner))?.key;
+        const roomKeys = new Map();
+        let name = "";
+        for (const k of g.keys) {
+          const unwrapped = ownerKey
+            ? unwrapRoomKey(k.wrapped, keysRef.current.secretKey, ownerKey)
+            : null;
+          if (unwrapped) {
+            roomKeys.set(k.version, unwrapped.roomKey);
+            name = unwrapped.name;
+          }
+        }
+        return {
+          id: g.id,
+          owner: g.owner,
+          version: g.version,
+          members: g.members,
+          roomKeys,
+          name: name || "Group",
+          readable: roomKeys.has(g.version),
+          isOwner: sameAddress(g.owner, account),
+        };
+      });
+      groupsRef.current = opened;
+      setGroups(opened);
+    } catch (err) {
+      if (err.status === 401) lostSession();
+      setError(errorMessage(err));
+    }
+  }, [account]);
 
   // Sends a transaction and waits for it to be mined. Returns true when it
   // went through, so the caller can keep its input when it did not.
@@ -236,6 +307,83 @@ export const ChatAppProvider = ({ children }) => {
 
   const clearThread = useCallback(() => setFriendMsg([]), []);
 
+  const readGroupMessages = useCallback(
+    async (id) => {
+      if (!keysRef.current || !sessionRef.current) return;
+      try {
+        const rows = await listGroupThread(id);
+        const group = groupsRef.current.find((g) => g.id === id);
+        setGroupMsg(
+          rows
+            .map((row) => {
+              const roomKey = group?.roomKeys.get(row.version);
+              const text = roomKey ? decryptRoom(row.ciphertext, roomKey) : null;
+              return {
+                id: row.id,
+                sender: row.sender,
+                text: text ?? UNREADABLE,
+                readable: text !== null,
+                timestamp: Math.floor(new Date(row.createdAt).getTime() / 1000),
+              };
+            })
+            .reverse()
+        );
+      } catch (err) {
+        if (err.status === 401) lostSession();
+        if (err.status !== 404) setError(errorMessage(err));
+      }
+    },
+    []
+  );
+
+  const clearGroupThread = useCallback(() => setGroupMsg([]), []);
+
+  // Wraps one room key for each address; everyone needs a registered chat key.
+  const wrapFor = (addresses, roomKey, name) =>
+    addresses.map((member) => {
+      const key = keyOf(member);
+      if (!key) throw new Error(`${nameOf(member)} has no chat key yet.`);
+      return { member: member.toLowerCase(), wrapped: wrapRoomKey({ roomKey, name }, keysRef.current.secretKey, key) };
+    });
+
+  const guarded = async (label, work) => {
+    setBusy(label);
+    try {
+      await work();
+      await loadGroups();
+      return true;
+    } catch (err) {
+      if (err.status === 401) lostSession();
+      setError(errorMessage(err));
+      return false;
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const createGroup = ({ name, members }) =>
+    guarded("group", async () => {
+      const title = name.trim();
+      if (!title || members.length === 0) throw new Error("Give the group a name and pick at least one friend.");
+      const keys = wrapFor([account, ...members], newRoomKey(), title);
+      const made = await createGroupRoom(keys);
+      router.push({ pathname: "/", query: { group: made.id } });
+    });
+
+  const addMember = (group, address) =>
+    guarded("group", async () => {
+      const roomKey = group.roomKeys.get(group.version);
+      const [entry] = wrapFor([address], roomKey, group.name);
+      await addGroupMember(group.id, entry.member, entry.wrapped);
+    });
+
+  // A new room key goes to everyone who stays; the removed member never gets it.
+  const removeMember = (group, address) =>
+    guarded("group", async () => {
+      const stay = group.members.filter((m) => !sameAddress(m, address));
+      await removeGroupMember(group.id, address.toLowerCase(), wrapFor(stay, newRoomKey(), group.name));
+    });
+
   const createAccount = async ({ name }) => {
     if (!name?.trim() || !account) {
       setError("Choose a name first.");
@@ -288,6 +436,15 @@ export const ChatAppProvider = ({ children }) => {
       list.map((m) => (m.id === pending.id ? { ...m, state: "sending" } : m))
     );
     try {
+      if (pending.group) {
+        const group = groupsRef.current.find((g) => g.id === pending.group);
+        const roomKey = group?.roomKeys.get(group.version);
+        if (!roomKey) throw new Error("This group's key is not available on this device.");
+        await sendGroupCiphertext(group.id, group.version, encryptRoom(pending.text, roomKey));
+        setPendingMsg((list) => list.filter((m) => m.id !== pending.id));
+        await readGroupMessages(group.id);
+        return true;
+      }
       const recipient = peopleRef.current.find((p) => sameAddress(p.address, pending.to));
       const ciphertext = encrypt(pending.text, keysRef.current.secretKey, recipient.key);
       await sendCiphertext(pending.to, ciphertext);
@@ -296,6 +453,8 @@ export const ChatAppProvider = ({ children }) => {
       return true;
     } catch (err) {
       if (err.status === 401) lostSession();
+      // The owner removed someone: reload the groups so a retry uses the new key.
+      if (err.status === 409) await loadGroups();
       setPendingMsg((list) =>
         list.map((m) =>
           m.id === pending.id ? { ...m, state: "failed", reason: errorMessage(err) } : m
@@ -319,6 +478,21 @@ export const ChatAppProvider = ({ children }) => {
     return deliver(pending);
   };
 
+  const sendGroupMessage = async ({ msg, groupId }) => {
+    const text = msg?.trim();
+    if (!text || !groupId) return false;
+    const pending = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      to: `group:${groupId}`,
+      group: groupId,
+      sender: account,
+      text,
+      state: "sending",
+    };
+    setPendingMsg((list) => [...list, pending]);
+    return deliver(pending);
+  };
+
   const retryMessage = (id) => {
     const pending = pendingMsg.find((m) => m.id === id);
     if (pending) deliver(pending);
@@ -334,6 +508,16 @@ export const ChatAppProvider = ({ children }) => {
       value={{
         readMessage,
         clearThread,
+        groups,
+        groupMsg,
+        loadGroups,
+        readGroupMessages,
+        clearGroupThread,
+        createGroup,
+        addMember,
+        removeMember,
+        sendGroupMessage,
+        nameOf,
         createAccount,
         requestFriend,
         acceptFriend,
