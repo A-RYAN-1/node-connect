@@ -79,7 +79,7 @@ async function startServer(overrides = {}) {
     config,
     store,
     useNeon,
-    befriend: (a, b) => friends.add([a, b].sort().map((x) => x.toLowerCase()).join(":")),
+    befriend: (a, b) => friends.add([a, b].map((x) => x.toLowerCase()).sort().join(":")),
     close: () => new Promise((resolve) => server.close(resolve)),
   };
 }
