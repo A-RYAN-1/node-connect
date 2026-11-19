@@ -34,7 +34,7 @@
 
 <p align="center">
   <a href="https://node-connect-sigma.vercel.app">
-    <img src="docs/images/chat.png" width="90%" alt="Chat screen: friends list on the left, the decrypted conversation with bob on the right, the account name and a 50 TOK balance in the header">
+    <img src="docs/images/chat.png" width="90%" alt="Chat screen: friends list on the left, the decrypted conversation with bob on the right, a Groups section under the friends list, the account name and a 0 TOK balance in the header">
   </a>
 </p>
 
@@ -100,10 +100,16 @@ Things to try in the first two minutes (use two MetaMask accounts, one per brows
     <td width="50%"><img src="docs/images/mine.png" alt="Mine page: day 0, reward 50 TOK, claims so far 0, ready with 6 messages counted with a friend, and a Mine and claim button"><p align="center"><sub>Yesterday's claim, ready (<a href="#features">how mining works</a>)</sub></p></td>
     <td width="50%"><img src="docs/images/mine-claimed.png" alt="Mine page after the claim: claims so far 1, You already claimed this day, Claimed 50 TOK for day 0"><p align="center"><sub>After the proof of work and the claim transaction</sub></p></td>
   </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/group-chat.png" alt="Group chat Weekend trip with 3 members: alice's message plan: saturday 9am and bob's reply count me in, shown with his name, and a Groups list in the sidebar"><p align="center"><sub>A group: one room key, messages sealed with it (<a href="#features">how groups work</a>)</sub></p></td>
+    <td width="50%"><img src="docs/images/group-members.png" alt="Members panel of Weekend trip: alice as owner, bob and carol each with a Remove button, and a note that removing someone starts a new room key"><p align="center"><sub>The owner's member list; Remove starts a new room key</sub></p></td>
+  </tr>
 </table>
 
 <sub>Screenshots: the production build of `main` on 2026-11-12 against a local Hardhat chain with
-demo accounts (alice, bob, carol, dave, erin), 1440x900. The day's messages went through the real
+demo accounts (alice, bob, carol, dave, erin), 1440x900. The chat and group screenshots are from the
+browser test (`npm run test:e2e`) on 2026-11-19: a production build against a local chain, three mock
+wallets, 1280x800, and the messages went through the real API and encryption. The day's messages went through the real
 API and encryption; the day's root was anchored by the relayer job and the claim was mined on that
 chain. The live site shows the same screens for Hoodi accounts; a live claim waits on the relayer
 key being set in production.</sub>
@@ -426,7 +432,9 @@ adding a friend and sending a message on Hoodi.
   removed from a group keeps whatever they already decrypted. A member added later reads from the key
   version they were added to, not the older history. The server sees who is in a group and when
   members post. Checked only with the API tests (12 on groups, passing on Neon and in memory, 2026-11-19)
-  and the browser test; not yet on the live site.
+  and the browser test. On the live site (2026-11-19) a throwaway wallet signed in, listed its groups
+  (an empty list from Neon) and was refused 403 when naming a non-friend; a full group with several
+  wallets was not run there because it needs friendships on Hoodi, which cost gas.
 - Rewards: the relayer is trusted to post true roots; the batch behind each root is public, so a wrong
   one can be shown, but the contract cannot check it. A claim needs an account at least a day old and
   can only be made the day after the activity.
