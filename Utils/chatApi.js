@@ -49,5 +49,21 @@ export const signIn = async (address, sign) => {
 export const sendCiphertext = (recipient, ciphertext) =>
   call("POST", "/api/messages", { recipient, ciphertext }).then((r) => r.message);
 
+export const listGroups = () => call("GET", "/api/groups").then((r) => r.groups);
+
+export const createGroupRoom = (keys) => call("POST", "/api/groups", { keys }).then((r) => r.group);
+
+export const addGroupMember = (group, member, wrapped) =>
+  call("POST", "/api/groups/members", { group, member, wrapped });
+
+export const removeGroupMember = (group, member, keys) =>
+  call("DELETE", "/api/groups/members", { group, member, keys });
+
+export const sendGroupCiphertext = (group, version, ciphertext) =>
+  call("POST", "/api/groups/messages", { group, version, ciphertext }).then((r) => r.message);
+
+export const listGroupThread = (group, limit = 100) =>
+  call("GET", `/api/groups/messages?group=${group}&limit=${limit}`).then((r) => r.messages);
+
 export const listThread = (other, limit = 100) =>
   call("GET", `/api/messages?with=${other}&limit=${limit}`).then((r) => r.messages);

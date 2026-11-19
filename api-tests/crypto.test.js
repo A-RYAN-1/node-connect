@@ -64,3 +64,37 @@ test("unicode and long text survive", async () => {
   const wire = encrypt(text, alice.secretKey, toHex(bob.publicKey));
   assert.equal(decrypt(wire, bob.secretKey, toHex(alice.publicKey)), text);
 });
+
+const {
+  newRoomKey,
+  wrapRoomKey,
+  unwrapRoomKey,
+  encryptRoom,
+  decryptRoom,
+} = require("../lib/client/crypto");
+
+test("a wrapped room key opens for its member only and carries the group name", async () => {
+  const owner = await keysFor(Wallet.createRandom());
+  const member = await keysFor(Wallet.createRandom());
+  const outsider = await keysFor(Wallet.createRandom());
+  const roomKey = newRoomKey();
+  const wrapped = wrapRoomKey({ roomKey, name: "Weekend trip" }, owner.secretKey, toHex(member.publicKey));
+  assert.ok(!wrapped.includes("Weekend"));
+  const opened = unwrapRoomKey(wrapped, member.secretKey, toHex(owner.publicKey));
+  assert.equal(opened.name, "Weekend trip");
+  assert.deepEqual(Array.from(opened.roomKey), Array.from(roomKey));
+  assert.equal(unwrapRoomKey(wrapped, outsider.secretKey, toHex(owner.publicKey)), null);
+  assert.equal(unwrapRoomKey("AAAA", member.secretKey, toHex(owner.publicKey)), null);
+});
+
+test("room messages open with the room key and nothing else", () => {
+  const key = newRoomKey();
+  const wire = encryptRoom("meet at 6", key);
+  assert.match(wire, /^[A-Za-z0-9+/]+={0,2}$/);
+  assert.ok(!wire.includes("meet"));
+  assert.equal(decryptRoom(wire, key), "meet at 6");
+  assert.equal(decryptRoom(wire, newRoomKey()), null);
+  assert.equal(decryptRoom("not base64 !!", key), null);
+  const text = "नमस्ते ".repeat(50);
+  assert.equal(decryptRoom(encryptRoom(text, key), key), text);
+});
