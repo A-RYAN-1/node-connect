@@ -364,6 +364,19 @@ input {
   white-space: nowrap;
 }
 
+.unread {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-text, #fff);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .friend-address,
 .mono {
   font-family: var(--mono);

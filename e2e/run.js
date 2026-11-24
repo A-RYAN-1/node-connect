@@ -173,6 +173,26 @@ async function main() {
     await alice.page.locator(".bubble", { hasText: "hello from Bob" }).waitFor();
     assert.equal(await alice.page.locator(".bubble.unreadable").count(), 0);
     await shot(alice.page, "04-alice-reads");
+    // Reading is reported as a mark, so Bob's page shows his message as seen.
+    await bob.page.locator(".bubble.mine", { hasText: "hello from Bob" }).getByText("Seen").waitFor();
+
+    // Alice goes back to the list (her session cookie stays), Bob writes again: one unread badge.
+    await alice.page.goto(base, { waitUntil: "domcontentloaded" });
+    await bob.page.getByLabel("Message").fill("second from Bob");
+    await bob.page.getByRole("button", { name: "Send" }).click();
+    await bob.page.locator(".bubble.pending").waitFor({ state: "detached" });
+    const bobUnread = alice.page.getByRole("link", { name: /Bob/ }).locator(".unread");
+    await bobUnread.waitFor();
+    assert.equal(await bobUnread.innerText(), "1");
+    await shot(alice.page, "04a-unread-badge");
+    // Opening the chat clears the badge and marks Bob's second message seen.
+    await alice.page.getByRole("link", { name: /Bob/ }).click();
+    await alice.page.getByRole("button", { name: "Unlock messages" }).click();
+    await alice.page.locator(".bubble", { hasText: "second from Bob" }).waitFor();
+    await bobUnread.waitFor({ state: "detached" });
+    await bob.page.locator(".bubble.mine", { hasText: "second from Bob" }).getByText("Seen").waitFor();
+    assert.equal(await bob.page.getByText("Seen").count(), 1);
+    await shot(bob.page, "04b-seen");
 
     // Group chat: Carol joins the network, becomes Alice's friend, and Alice starts a room.
     const carol = await open(KEYS.carol);
@@ -209,7 +229,9 @@ async function main() {
     // Bob and Carol find the room by name, unlock it and read the same text, with the author shown.
     for (const who of [bob, carol]) {
       await unlockGroups(who);
+      await who.page.getByRole("link", { name: /Weekend trip/ }).locator(".unread").waitFor();
       await who.page.getByRole("link", { name: /Weekend trip/ }).click();
+      await who.page.getByRole("link", { name: /Weekend trip/ }).locator(".unread").waitFor({ state: "detached" });
       const bubble = who.page.locator(".bubble", { hasText: "plan: saturday 9am" });
       await bubble.waitFor();
       assert.equal(await bubble.locator(".bubble-author").innerText(), "Alice");
@@ -237,7 +259,7 @@ async function main() {
     const anon = await fetch(`${base}/api/messages?with=${bob.address}`);
     assert.equal(anon.status, 401);
     assert.equal((await fetch(`${base}/api/groups`)).status, 401);
-    console.log("e2e passed: account, friendship, encrypted message, group chat with a removed member");
+    console.log("e2e passed: account, friendship, encrypted message, unread badge and seen receipt, group chat with a removed member");
   } finally {
     await browser.close();
   }

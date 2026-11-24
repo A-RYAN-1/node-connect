@@ -23,6 +23,8 @@ import {
   removeGroupMember,
   sendGroupCiphertext,
   listGroupThread,
+  getReads,
+  markReadUpTo,
 } from "../Utils/chatApi";
 import {
   KEY_MESSAGE,
@@ -55,6 +57,8 @@ export const ChatAppProvider = ({ children }) => {
   const [pendingMsg, setPendingMsg] = useState([]);
   const [groups, setGroups] = useState([]);
   const [groupMsg, setGroupMsg] = useState([]);
+  const [unread, setUnread] = useState({ direct: {}, groups: {} });
+  const [theirRead, setTheirRead] = useState(0);
   const [leaderboard, setLeaderboard] = useState([]);
   const [tokenBalance, setTokenBalance] = useState(0);
   const [error, setError] = useState("");
@@ -305,7 +309,36 @@ export const ChatAppProvider = ({ children }) => {
     [account]
   );
 
-  const clearThread = useCallback(() => setFriendMsg([]), []);
+  const clearThread = useCallback(() => {
+    setFriendMsg([]);
+    setTheirRead(0);
+  }, []);
+
+  // Unread counts for every chat, and with a peer also how far that friend has read.
+  // Only ids and counts travel; the server never sees what was read.
+  const refreshReads = useCallback(async (peer) => {
+    if (!sessionRef.current) return;
+    try {
+      const reads = await getReads(peer);
+      setUnread(reads.unread);
+      if (peer) setTheirRead(reads.theirLastRead ?? 0);
+    } catch (err) {
+      if (err.status === 401) lostSession();
+    }
+  }, []);
+
+  const markRead = useCallback(
+    async (target, upTo) => {
+      if (!sessionRef.current) return;
+      try {
+        await markReadUpTo(target, upTo);
+        await refreshReads(target.with);
+      } catch (err) {
+        if (err.status === 401) lostSession();
+      }
+    },
+    [refreshReads]
+  );
 
   const readGroupMessages = useCallback(
     async (id) => {
@@ -508,6 +541,10 @@ export const ChatAppProvider = ({ children }) => {
       value={{
         readMessage,
         clearThread,
+        unread,
+        theirRead,
+        refreshReads,
+        markRead,
         groups,
         groupMsg,
         loadGroups,
