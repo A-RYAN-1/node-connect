@@ -101,6 +101,10 @@ Things to try in the first two minutes (use two MetaMask accounts, one per brows
     <td width="50%"><img src="docs/images/mine-claimed.png" alt="Mine page after the claim: claims so far 1, You already claimed this day, Claimed 50 TOK for day 0"><p align="center"><sub>After the proof of work and the claim transaction</sub></p></td>
   </tr>
   <tr>
+    <td width="50%"><img src="docs/images/unread-badge.png" alt="Alice's chat list with one unread message from Bob shown as a badge next to his name"><p align="center"><sub>An unread count, from message ids only (<a href="#features">how read receipts work</a>)</sub></p></td>
+    <td width="50%"><img src="docs/images/seen-receipt.png" alt="Bob's conversation with Alice: his second message shows Seen under it after Alice opened the chat"><p align="center"><sub>Seen appears under the newest message the friend has read</sub></p></td>
+  </tr>
+  <tr>
     <td width="50%"><img src="docs/images/group-chat.png" alt="Group chat Weekend trip with 3 members: alice's message plan: saturday 9am and bob's reply count me in, shown with his name, and a Groups list in the sidebar"><p align="center"><sub>A group: one room key, messages sealed with it (<a href="#features">how groups work</a>)</sub></p></td>
     <td width="50%"><img src="docs/images/group-members.png" alt="Members panel of Weekend trip: alice as owner, bob and carol each with a Remove button, and a note that removing someone starts a new room key"><p align="center"><sub>The owner's member list; Remove starts a new room key</sub></p></td>
   </tr>
