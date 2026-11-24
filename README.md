@@ -38,7 +38,7 @@
   </a>
 </p>
 
-<p align="center"><sub>Last updated: 2026-11-19 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
+<p align="center"><sub>Last updated: 2026-11-24 &middot; Live on Vercel (free), contracts on the Hoodi testnet &middot; rework in progress (see <a href="#status-and-roadmap">roadmap</a>)</sub></p>
 
 ---
 
@@ -131,6 +131,13 @@ key being set in production.</sub>
   adds friends (they read from then on) and removes members: removal starts a new key version, locked
   only for the people who stay, so the removed member can read nothing sent afterwards. Group messages
   never count toward mining and share the per-minute send limit with direct messages.
+- **Unread counts and read receipts**: the friends and groups lists show how many messages from others
+  are unread, and a sender sees "Seen" under the newest of their messages the friend has read. The server
+  stores one row per person and chat: the id of the last message they have seen (`read_marks`), never any
+  content. A mark only moves forward and only to a message the person can see in that chat. A friend's
+  receipt is read from that friend's own mark for you, so a third address learns nothing. Groups show
+  unread counts only, no per-member receipts, and a removed member stops counting. API: `POST /api/reads`
+  and `GET /api/reads` (see `/api/docs`).
 - **Pending and failed states**: a message shows at once as sending; if the API refuses it, it stays
   in the thread as not sent with Retry and Discard.
 - **Live thread**: the open conversation polls every 4 seconds while the tab is visible.
@@ -431,7 +438,7 @@ adding a friend and sending a message on Hoodi.
 - Groups: only the owner changes the members, a group cannot be renamed or deleted, and a member
   removed from a group keeps whatever they already decrypted. A member added later reads from the key
   version they were added to, not the older history. The server sees who is in a group and when
-  members post. Checked only with the API tests (12 on groups, passing on Neon and in memory, 2026-11-19)
+  members post. Read marks add a further piece of metadata: the server knows when each person last read a chat, by message id. Checked only with the API tests (12 on groups, passing on Neon and in memory, 2026-11-19)
   and the browser test. On the live site (2026-11-19) a throwaway wallet signed in, listed its groups
   (an empty list from Neon) and was refused 403 when naming a non-friend; a full group with several
   wallets was not run there because it needs friendships on Hoodi, which cost gas.
@@ -460,6 +467,7 @@ adding a friend and sending a message on Hoodi.
 - [x] Abuse score from message metadata, measured on simulated farming accounts, applied to the mining batch (built 2026-11-14; 35 API tests)
 - [x] Group chats with a shared room key locked per member, owner adds and removes, new key on removal
       (built 2026-11-19: 12 API tests on groups, browser test with three wallets)
+- [x] Unread counts and read receipts as metadata only (built 2026-11-24: 7 API tests, passing in memory and on Neon)
 - [ ] Production checks again (Slither in CI, API tests, Lighthouse), then this README
 
 ## Credits

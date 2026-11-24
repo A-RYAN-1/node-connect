@@ -20,38 +20,52 @@ const same = (a, b) => a.toLowerCase() === b.toLowerCase();
 
 // Decrypted messages followed by the ones still sending or failed. In a group
 // each message from someone else shows who wrote it.
-const Bubbles = ({ messages, pending, account, labelFor, retryMessage, dismissMessage }) => (
-  <>
-    {messages.map((m) => (
-      <div
-        key={m.id}
-        className={`bubble ${same(m.sender, account) ? "mine" : ""} ${m.readable ? "" : "unreadable"}`}
-      >
-        {labelFor && !same(m.sender, account) && <div className="bubble-author">{labelFor(m.sender)}</div>}
-        {m.text}
-        <div className="bubble-meta">{formatTime(m.timestamp)}</div>
-      </div>
-    ))}
-    {pending.map((m) => (
-      <div key={m.id} className={`bubble mine pending ${m.state}`}>
-        {m.text}
-        {m.state === "sending" ? (
-          <div className="bubble-meta">Sending</div>
-        ) : (
+const Bubbles = ({ messages, pending, account, labelFor, retryMessage, dismissMessage, seenUpTo = 0 }) => {
+  // "Seen" goes under the newest of my messages the other person has read.
+  const seenId = Math.max(0, ...messages.filter((m) => same(m.sender, account) && m.id <= seenUpTo).map((m) => m.id));
+  return (
+    <>
+      {messages.map((m) => (
+        <div
+          key={m.id}
+          className={`bubble ${same(m.sender, account) ? "mine" : ""} ${m.readable ? "" : "unreadable"}`}
+        >
+          {labelFor && !same(m.sender, account) && <div className="bubble-author">{labelFor(m.sender)}</div>}
+          {m.text}
           <div className="bubble-meta">
-            Not sent: {m.reason}{" "}
-            <button type="button" className="link" onClick={() => retryMessage(m.id)}>
-              Retry
-            </button>{" "}
-            <button type="button" className="link" onClick={() => dismissMessage(m.id)}>
-              Discard
-            </button>
+            {formatTime(m.timestamp)}
+            {m.id === seenId && " \u00b7 Seen"}
           </div>
-        )}
-      </div>
-    ))}
-  </>
-);
+        </div>
+      ))}
+      {pending.map((m) => (
+        <div key={m.id} className={`bubble mine pending ${m.state}`}>
+          {m.text}
+          {m.state === "sending" ? (
+            <div className="bubble-meta">Sending</div>
+          ) : (
+            <div className="bubble-meta">
+              Not sent: {m.reason}{" "}
+              <button type="button" className="link" onClick={() => retryMessage(m.id)}>
+                Retry
+              </button>{" "}
+              <button type="button" className="link" onClick={() => dismissMessage(m.id)}>
+                Discard
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+    </>
+  );
+};
+
+const Unread = ({ count }) =>
+  count ? (
+    <span className="unread" aria-label={`${count} unread`}>
+      {count > 99 ? "99+" : count}
+    </span>
+  ) : null;
 
 const Composer = ({ placeholder, onSend }) => {
   const [text, setText] = useState("");
@@ -114,18 +128,35 @@ const Conversation = ({ name, address }) => {
     retryMessage,
     dismissMessage,
     unlocked,
+    theirRead,
+    refreshReads,
+    markRead,
   } = useContext(ChatAppContext);
+  const marked = useRef(0);
 
   useEffect(() => {
     clearThread();
+    marked.current = 0;
     if (!unlocked) return undefined;
-    readMessage(address);
-    // New messages arrive by polling while the conversation is on screen.
+    const refresh = () => {
+      readMessage(address);
+      refreshReads(address);
+    };
+    refresh();
+    // New messages and read receipts arrive by polling while the conversation is on screen.
     const timer = setInterval(() => {
-      if (document.visibilityState === "visible") readMessage(address);
+      if (document.visibilityState === "visible") refresh();
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [address, unlocked, readMessage, clearThread]);
+  }, [address, unlocked, readMessage, refreshReads, clearThread]);
+
+  // Seeing the newest message tells the server its id, nothing else.
+  const newestId = friendMsg.length ? friendMsg[friendMsg.length - 1].id : 0;
+  useEffect(() => {
+    if (!unlocked || newestId <= marked.current) return;
+    marked.current = newestId;
+    markRead({ with: address }, newestId);
+  }, [newestId, unlocked, address, markRead]);
 
   const mine = pendingMsg.filter((m) => m.to === address);
   useEffect(() => {
@@ -161,6 +192,7 @@ const Conversation = ({ name, address }) => {
               messages={friendMsg}
               pending={mine}
               account={account}
+              seenUpTo={theirRead}
               retryMessage={retryMessage}
               dismissMessage={dismissMessage}
             />
@@ -251,9 +283,22 @@ const GroupConversation = ({ id }) => {
     dismissMessage,
     nameOf,
     unlocked,
+    markRead,
   } = useContext(ChatAppContext);
   const group = groups.find((g) => g.id === id);
   const key = group ? `${group.id}:${group.version}` : "";
+  const marked = useRef(0);
+
+  useEffect(() => {
+    marked.current = 0;
+  }, [id]);
+
+  const newestId = groupMsg.length ? groupMsg[groupMsg.length - 1].id : 0;
+  useEffect(() => {
+    if (!unlocked || !group || newestId <= marked.current) return;
+    marked.current = newestId;
+    markRead({ group: id }, newestId);
+  }, [newestId, unlocked, group, id, markRead]);
 
   useEffect(() => {
     clearGroupThread();
@@ -339,7 +384,7 @@ const GroupConversation = ({ id }) => {
 };
 
 const Chat = () => {
-  const { account, userName, ready, friendLists, people, connectWallet, connecting, groups, unlocked, unlock, unlocking, loadGroups } =
+  const { account, userName, ready, friendLists, people, connectWallet, connecting, groups, unlocked, unlock, unlocking, loadGroups, unread, refreshReads } =
     useContext(ChatAppContext);
   const [creating, setCreating] = useState(false);
   const incoming = people.filter((p) => p.relation === "incoming").length;
@@ -356,6 +401,16 @@ const Chat = () => {
     }, POLL_MS * 2);
     return () => clearInterval(timer);
   }, [unlocked, loadGroups]);
+
+  // Unread counts need no unlock: the server counts ids and never reads a message.
+  useEffect(() => {
+    if (!account) return undefined;
+    refreshReads();
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") refreshReads();
+    }, POLL_MS * 2);
+    return () => clearInterval(timer);
+  }, [account, refreshReads]);
 
   if (!ready) return <div className="page" />;
 
@@ -421,6 +476,7 @@ const Chat = () => {
                       <span className="friend-name">{f.name}</span>
                       <span className="friend-address">{shortAddress(f.address)}</span>
                     </span>
+                    <Unread count={unread.direct[f.address.toLowerCase()]} />
                   </Link>
                 </li>
               ))}
@@ -471,6 +527,7 @@ const Chat = () => {
                         <span className="friend-name">{g.name}</span>
                         <span className="friend-address">{g.members.length} members</span>
                       </span>
+                      <Unread count={unread.groups[g.id]} />
                     </Link>
                   </li>
                 ))}

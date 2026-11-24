@@ -65,5 +65,10 @@ export const sendGroupCiphertext = (group, version, ciphertext) =>
 export const listGroupThread = (group, limit = 100) =>
   call("GET", `/api/groups/messages?group=${group}&limit=${limit}`).then((r) => r.messages);
 
+export const getReads = (peer) =>
+  call("GET", peer ? `/api/reads?with=${peer}` : "/api/reads");
+
+export const markReadUpTo = (target, upTo) => call("POST", "/api/reads", { ...target, upTo });
+
 export const listThread = (other, limit = 100) =>
   call("GET", `/api/messages?with=${other}&limit=${limit}`).then((r) => r.messages);

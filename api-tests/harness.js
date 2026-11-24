@@ -18,6 +18,7 @@ function routes(api) {
     "/api/groups": api.groups,
     "/api/groups/members": api.groupMembers,
     "/api/groups/messages": api.groupMessages,
+    "/api/reads": api.reads,
     "/api/health": api.health,
     "/api/mining/batch": api.miningBatch,
     "/api/mining/proof": api.miningProof,
